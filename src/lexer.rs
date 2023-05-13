@@ -3,18 +3,18 @@ use crate::token::TokenType;
 pub struct Lexer<'a> {
     input: &'a str,
     chars: std::str::Chars<'a>,
-    current_char: Option<char>
+    current_char: Option<char>,
 }
 
-impl <'a> Lexer<'a> {
+impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         let mut chars = input.chars();
         let current_char = chars.next();
 
-        Lexer { 
-            input, 
-            chars, 
-            current_char 
+        Lexer {
+            input,
+            chars,
+            current_char,
         }
     }
 
@@ -37,6 +37,9 @@ impl <'a> Lexer<'a> {
                 '=' => TokenType::Equals,
                 '{' => TokenType::OpenBrace,
                 '}' => TokenType::CloseBrace,
+                '(' => TokenType::OpenParen,
+                ')' => TokenType::CloseParen,
+                ',' => TokenType::Comma,
                 _ => panic!("Invalid character: {c}"),
             };
 
@@ -71,7 +74,8 @@ impl <'a> Lexer<'a> {
 
         match value.as_str() {
             "let" => TokenType::Let,
-            _ => TokenType::Ident(value)
+            "function" => TokenType::Fn,
+            _ => TokenType::Ident(value),
         }
     }
 
@@ -101,7 +105,7 @@ macro_rules! assert_tokens {
 }
 
 #[cfg(test)]
-mod tests {
+mod lexer_tests {
     use super::*;
 
     #[test]
