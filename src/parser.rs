@@ -1,301 +1,304 @@
-use crate::{ast::ASTNode, token::TokenType};
+use crate::{token::TokenType, ast::{Statement, Expression}};
 
-#[derive(Debug, Copy, Clone)]
+/// `Parser` struct is used to parse tokens into statements.
+/// 
+/// It takes a slice of tokens as an argument.
 pub struct Parser<'a> {
     tokens: &'a [TokenType],
+    curr_token: Option<TokenType>,
     pos: usize,
 }
 
 impl<'a> Parser<'a> {
+    /// `new` method is used to create a new parser.
+    /// 
+    /// It takes a slice of tokens as an argument and returns a new parser.
+    ///     
+    /// # Example
+    /// 
+    /// ```
+    /// use parser::Parser;
+    /// use token::TokenType;
+    /// 
+    /// let tokens = vec![
+    ///     TokenType::Let, 
+    ///     TokenType::Ident("x".to_string()), 
+    ///     TokenType::Equals, 
+    ///     TokenType::Number(10)
+    /// ];
+    /// 
+    /// let parser = Parser::new(&tokens);
+    /// ```
     pub fn new(tokens: &'a [TokenType]) -> Self {
-        Self { tokens, pos: 0 }
-    }
-
-    pub fn parse(&mut self) -> ASTNode {
-        self.program()
-    }
-
-    fn program(&mut self) -> ASTNode {
-        let mut nodes: Vec<ASTNode> = Vec::new();
-
-        while self.pos < self.tokens.len() {
-            nodes.push(self.statement());
-        }
-
-        ASTNode::Scope(nodes)
-    }
-
-    fn statement(&mut self) -> ASTNode {
-        match self.current_token() {
-            TokenType::Let => self.variable_decl(),
-            TokenType::Fn => self.function_decl(),
-            TokenType::Ident(name) => {
-                let name = name.clone();
-                if self.peek_next() == &TokenType::OpenParen {
-                    self.consume(
-                        TokenType::Ident(name.clone()), 
-                        "Expected identifier"
-                    );
-                    let function_call = self.function_call(name.clone());
-                    function_call
-                } else {
-                    panic!("Expected function call or variable declaration")
-                }
-            }
-            _ => panic!("Expected function call or variable declaration")
+        Parser { 
+            tokens, 
+            curr_token: None, 
+            pos: 0 
         }
     }
 
-    fn variable_decl(&mut self) -> ASTNode {
-        self.consume(
-            TokenType::Let, 
-            "Expected 'let' keyword for variable declaration"
-        );
+    /// `parse` method is used to parse the tokens into statements.
+    /// 
+    /// It returns a vector of statements.
+    /// 
+    /// # Example
+    /// 
+    /// ```
+    /// use parser::Parser;
+    /// use token::TokenType;
+    /// 
+    /// let tokens = vec![
+    ///    TokenType::Let,
+    ///   TokenType::Ident("x".to_string()),
+    ///    TokenType::Equals,
+    ///   TokenType::Number(10),
+    /// ];
+    /// 
+    /// let mut parser = Parser::new(&tokens);
+    /// let stmts = parser.parse();
+    /// ```
+    pub fn parse(&mut self) -> Vec<Statement> {
+        let mut stmts = Vec::new();
 
-        let name = match self.consume_next("Expected variable name after `let` keyword") {
-            TokenType::Ident(name) => name,
-            _ => panic!("Expected variable name after `let` keyword"),
-        };
-
-        self.consume(
-            TokenType::Equals, 
-            "Expected `=` after variable name"
-        );
-
-        let value = Box::new(self.expression());
-
-        ASTNode::VariableDecl { name, value }
-    }
-
-    fn function_decl(&mut self) -> ASTNode {
-        self.consume(
-            TokenType::Fn,
-            "Expected 'function' keyword for function declaration",
-        );
-
-        let name = match self.consume_next("Expected function name after `function` keyword") {
-            TokenType::Ident(name) => name,
-            _ => panic!("Expected function name after `function` keyword"),
-        };
-
-        self.consume(
-            TokenType::OpenParen, 
-            "Expected `(` after function name"
-        );
-
-        let mut params = Vec::new();
-
-        while let TokenType::Ident(param) = self.current_token() {
-            params.push(param.clone());
-
-            if let TokenType::Comma = self.peek_next() {
-                self.consume(
-                    TokenType::Comma, 
-                    "Expected `,` after function parameter");
-            } else {
-                break;
-            }
+        while !self.is_at_end() {
+            stmts.push(self.statement());
         }
 
-        self.consume(
-            TokenType::CloseParen,
-            "Expected `)` after function parameter",
-        );
-
-        let body = Box::new(self.scope());
-
-        ASTNode::FunctionDecl { name, params, body }
+        stmts
     }
 
-    fn function_call(&mut self, name: String) -> ASTNode {
-        self.consume(
-            TokenType::OpenParen,
-            "Expected `(` after function name",
-        );
-        
-        let mut args = Vec::new();
-
-        while self.current_token() != &TokenType::CloseParen {
-            args.push(self.expression());
-
-            if let TokenType::Comma = self.current_token() {
-                self.consume(
-                    TokenType::Comma,
-                    "Expected `,` after function argument",
-                );
-            } else {
-                break;
-            }
-        }
-
-        self.consume(
-            TokenType::CloseParen,
-            "Expected `)` after function argument",
-        );
-        
-        ASTNode::FunctionCall { name, args }
-    }
-
-    fn expression(&mut self) -> ASTNode {
-        match self.current_token() {
-            TokenType::Number(n) => {
-                let n = n.clone();
-                self.consume(
-                    TokenType::Number(n),
-                    "Expected number literal",
-                );
-                ASTNode::Number(n)
-            }
-            TokenType::Ident(name) => {
-                let name = name.clone();
-                if self.peek_next() == &TokenType::OpenParen {
-                    self.consume(
-                        TokenType::Ident(name.clone()), 
-                        "Expected identifier"
-                    );
-                    let function_call = self.function_call(name);
-                    function_call
-                } else {
-                    ASTNode::Ident(name.clone())
-                }
-            }
-            _ => panic!("Expected number literal or identifier")
+    /// `statement` method is used to parse a statement.
+    /// 
+    /// A statement can be a function definition, a variable definition, a function call, or a scope.
+    fn statement(&mut self) -> Statement {
+        match self.peek() {
+            Some(TokenType::Fn) => self.function_definition(),
+            Some(TokenType::Let) => self.variable_definition(),
+            Some(TokenType::Ident(_)) => self.function_call(),
+            Some(TokenType::OpenBrace) => self.scope(),
+            _ => panic!("Unexpected token: {:?}", self.peek()),
         }
     }
 
-    fn current_token(&self) -> &TokenType {
-        &self.tokens[self.pos]
-    }
+    fn variable_definition(&mut self) -> Statement {
+        self.expect(TokenType::Let, "Expected 'let'");
 
-    fn peek_next(&self) -> &TokenType {
-        &self.tokens[self.pos + 1]
-    }
-
-    fn consume(&mut self, token: TokenType, error_msg: &str) {
-        if *self.current_token() == token {
-            self.pos += 1;
+        let name = self.expect_identifier("Expected variable name");
+        let value = if let Some(TokenType::Equals) = self.peek() {
+            self.advance();
+            Some(self.expression())
         } else {
-            panic!("{error_msg}");
+            None
+        };
+
+        self.expect(TokenType::Semicolon, "Expected ';'");
+
+        Statement::VariableDecl { name, value }
+    }
+
+    fn function_definition(&mut self) -> Statement {
+        self.expect(TokenType::Fn, "Expected 'function'");
+
+        let name = self.expect_identifier("Expected function name");
+        self.expect(TokenType::OpenParen, "Expected '('");
+
+        let mut args = Vec::new();
+        if let Some(TokenType::Ident(_)) = self.peek() {
+            args.push(self.expect_identifier("Expected argument name"));
+
+            while let Some(TokenType::Comma) = self.peek() {
+                self.advance();     // consume comma
+                args.push(self.expect_identifier("Expected argument name"));
+            }
+        }
+
+        self.expect(TokenType::CloseParen, "Expected ')'");
+
+        let body = match self.scope() {
+            Statement::Scope(stmts) => stmts,
+            _ => panic!("Expected scope"),
+        };
+
+        Statement::FunctionDef { 
+            name, 
+            args: if args.is_empty() { None } else { Some(args) }, 
+            body,
         }
     }
 
-    fn consume_next(&mut self, error_msg: &str) -> TokenType {
+    fn function_call(&mut self) -> Statement {
+        let name = self.expect_identifier("Expected function name");
+        self.expect(TokenType::OpenParen, "Expected '('");
+
+        let arg = if let Some(TokenType::Ident(_)) = self.peek() {
+            Some(self.expression())
+        } else {
+            None
+        };
+
+        self.expect(TokenType::CloseParen, "Expected ')'");
+        self.expect(TokenType::Semicolon, "Expected ';'");
+
+        Statement::FunctionCall { name, arg }
+    }
+
+    fn scope(&mut self) -> Statement {
+        self.expect(TokenType::OpenBrace, "Expected '{'");
+
+        let mut stmts = Vec::new();
+        while let Some(token) = self.peek() {
+            if matches!(token, TokenType::CloseBrace) {
+                break;
+            }
+
+            stmts.push(self.statement());
+        }
+
+        self.expect(TokenType::CloseBrace, "Expected '}'");
+
+        Statement::Scope(stmts)
+    }
+
+    fn expression(&mut self) -> Expression {
+        let token = self.advance();
+
+        match token {
+            Some(TokenType::Ident(name)) => Expression::Ident(name.clone()),
+            Some(TokenType::Number(value)) => Expression::Number(*value),
+            _ => panic!("Unexpected token: {token:?}"),
+        }
+    }
+
+    /// `identifier` method is used to parse an identifier.
+    fn identifier(&mut self) -> Expression {
+        let name = self.expect_identifier("Expected identifier");
+
+        Expression::Ident(name)
+    }
+
+    /// `expect_identifier` method is used to parse an identifier.
+    /// 
+    /// It returns the name of the identifier.
+    fn expect_identifier(&mut self, msg: &str) -> String {
+        match self.advance() {
+            Some(TokenType::Ident(name)) => name.clone(),
+            _ => panic!("{msg}"),
+        }
+    }
+
+    /// `is_at_end` method is used to check if the parser has reached the end of the tokens.
+    fn is_at_end(&self) -> bool {
+        self.pos >= self.tokens.len()
+    }
+
+    /// `advance` method is used to move the parser forward by one token.
+    fn advance(&mut self) -> Option<&TokenType> {
+        let token = self.tokens.get(self.pos);
         self.pos += 1;
 
-        if self.pos < self.tokens.len() {
-            self.current_token().clone()
+        token
+    }
+
+    /// `peek` method is used to get the current token without moving the parser forward.
+    fn peek(&self) -> Option<&TokenType> {
+        if self.is_at_end() {
+            None
         } else {
-            panic!("{error_msg}")
+            Some(&self.tokens[self.pos])
         }
     }
 
-    fn scope(&mut self) -> ASTNode {
-        self.consume(
-            TokenType::OpenBrace,
-            "Expected `{` at the beginning of a scope",
-        );
-
-        let mut nodes = Vec::new();
-
-        while *self.current_token() != TokenType::CloseBrace {
-            nodes.push(self.statement());
+    /// `expect` method is used to check if the current token is the expected token.
+    fn expect(&mut self, token: TokenType, msg: &str) -> () {
+        if Some(&token) != self.peek() {
+            panic!("{msg}");
         }
 
-        self.consume(
-            TokenType::CloseBrace, 
-            "Expected `}` at the end of a scope"
-        );
-
-        ASTNode::Scope(nodes)
+        self.advance();
     }
 }
 
 #[cfg(test)]
-mod parser_tests {
+mod parser_test {
     use super::*;
+    use crate::lexer::Lexer;
+
+    fn setup(input: &str) -> Vec<TokenType> {
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer
+            .tokenize()
+            .expect("Failed to tokenize");
+
+        tokens
+    }
 
     #[test]
-    fn test_parse_variable_declaration() {
-        // let x = 5
-        let tokens = vec![
-            TokenType::Let,
-            TokenType::Ident("x".to_string()),
-            TokenType::Equals,
-            TokenType::Number(5),
-        ];
+    fn test_parse_variable() {
+        let input = "let x = 10;";
+        let tokens = setup(input);
 
         let mut parser = Parser::new(&tokens);
-        let ast = parser.parse();
+        let stmts = parser.parse();
 
         assert_eq!(
-            ast,
-            ASTNode::Scope(vec![
-                ASTNode::VariableDecl {
-                    name: "x".to_string(),
-                    value: Box::new(ASTNode::Number(5)),
-                }
-            ])
+            stmts,
+            vec![Statement::VariableDecl {
+                name: "x".to_string(),
+                value: Some(Expression::Number(10)),
+            }]
         );
     }
 
     #[test]
-    fn test_parse_function_declaration() {
-        // function f(x) { let y = x }
-        let tokens = vec![
-            TokenType::Fn,
-            TokenType::Ident("f".to_string()),
-            TokenType::OpenParen,
-            TokenType::Ident("x".to_string()),
-            TokenType::CloseParen,
-            TokenType::OpenBrace,
-            TokenType::Let,
-            TokenType::Ident("y".to_string()),
-            TokenType::Equals,
-            TokenType::Ident("x".to_string()),
-            TokenType::CloseBrace,
-        ];
+    fn test_function_declaration() {
+        let input = r#"
+            fn foo(x, y) {
+                let z = x + y
+            }
+        "#;
 
+        let tokens = setup(input);
         let mut parser = Parser::new(&tokens);
-        let ast = parser.parse();
+
+        let stmts = parser.parse();
 
         assert_eq!(
-            ast,
-            ASTNode::Scope(vec![
-                ASTNode::FunctionDecl {
-                    name: "f".to_string(),
-                    params: vec!["x".to_string()],
-                    body: Box::new(ASTNode::Scope(vec![
-                        ASTNode::VariableDecl {
-                            name: "y".to_string(),
-                            value: Box::new(ASTNode::Ident("x".to_string())),
-                        }
-                    ])),
-                }
-            ])
+            stmts,
+            vec![Statement::FunctionDef {
+                name: "foo".to_string(),
+                args: Some(vec!["x".to_string(), "y".to_string()]),
+                body: vec![Statement::VariableDecl {
+                    name: "z".to_string(),
+                    value: Some(Expression::Ident("x".to_string())),
+                }],
+            }]
         );
     }
 
     #[test]
-    fn test_parse_function_call() {
-        // f(5)
-        let tokens = vec![
-            TokenType::Ident("f".to_string()),
-            TokenType::OpenParen,
-            TokenType::Number(5),
-            TokenType::CloseParen,
-        ];
-
+    fn test_function_call() {
+        let input = r#"foo(5)"#;
+        let tokens = setup(input);
         let mut parser = Parser::new(&tokens);
-        let ast = parser.parse();
+
+        let stmts = parser.parse();
 
         assert_eq!(
-            ast,
-            ASTNode::Scope(vec![
-                ASTNode::FunctionCall {
-                    name: "f".to_string(),
-                    args: vec![ASTNode::Number(5)],
-                }
-            ])
+            stmts,
+            vec![Statement::FunctionCall {
+                name: "foo".to_string(),
+                arg: Some(Expression::Number(5)),
+            }]
         );
+    }
+
+    #[test]
+    fn test_scope() {
+        let input = r#"
+            {
+                let x = 5
+                let y = 10
+            }
+        "#;
     }
 }
