@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
     Let,
     Fn,
@@ -10,4 +10,5 @@ pub enum TokenType {
     OpenParen,
     CloseParen,
     Comma,
+    Semicolon,
 }

@@ -40,6 +40,7 @@ impl<'a> Lexer<'a> {
                 '(' => TokenType::OpenParen,
                 ')' => TokenType::CloseParen,
                 ',' => TokenType::Comma,
+                ';' => TokenType::Semicolon,
                 _ => panic!("Invalid character: {c}"),
             };
 
@@ -48,6 +49,16 @@ impl<'a> Lexer<'a> {
         }
 
         None
+    }
+
+    pub fn tokenize(&mut self) -> Result<Vec<TokenType>, String> {
+        let mut tokens = Vec::new();
+
+        while let Some(token) = self.next_token() {
+            tokens.push(token);
+        }
+
+        Ok(tokens)
     }
 
     fn skip_whitespace(&mut self) {
@@ -125,7 +136,8 @@ mod lexer_tests {
     #[test]
     fn test_lexer_with_scope() {
         let input = r#"
-            let a = 5 { 
+            let a = 5 
+            { 
                 let b = a 
             }
         "#;

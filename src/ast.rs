@@ -1,19 +1,23 @@
-#[derive(Debug, PartialEq, Eq)]
-pub enum ASTNode {
+#[derive(Debug, PartialEq)]
+pub enum Statement {
+    FunctionDef {
+        name: String,
+        args: Option<Vec<String>>,
+        body: Vec<Statement>,
+    },
     VariableDecl {
         name: String,
-        value: Box<ASTNode>,
-    },
-    FunctionDecl {
-        name: String,
-        params: Vec<String>,
-        body: Box<ASTNode>,
+        value: Option<Expression>,
     },
     FunctionCall {
         name: String,
-        args: Vec<ASTNode>,
+        arg: Option<Expression>,
     },
-    Number(i32),
+    Scope(Vec<Statement>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Expression {
     Ident(String),
-    Scope(Vec<ASTNode>),
+    Number(i32),
 }
