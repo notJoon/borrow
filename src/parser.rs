@@ -126,20 +126,31 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// `function_call` method handles function calls.
+    /// 
+    /// It takes mut self as an argument and returns a statement.
     fn function_call(&mut self) -> Statement {
         let name = self.expect_identifier("Expected function name");
         self.expect(TokenType::OpenParen, "Expected '('");
 
-        let arg = if let Some(TokenType::Ident(_)) = self.peek() {
-            Some(self.expression())
-        } else {
-            None
-        };
+        let mut args = Vec::new();
+        while let Some(token) = self.peek() {
+            if matches!(token, TokenType::CloseParen) {
+                break;
+            }
+
+            args.push(self.expression());
+
+            // consume comma, if there are multiple arguments
+            if let Some(TokenType::Comma) = self.peek() {
+                self.advance();
+            }
+        }
 
         self.expect(TokenType::CloseParen, "Expected ')'");
         self.expect(TokenType::Semicolon, "Expected ';'");
 
-        Statement::FunctionCall { name, arg }
+        Statement::FunctionCall { name, args }
     }
 
     fn scope(&mut self) -> Statement {
@@ -253,7 +264,7 @@ mod parser_test {
     fn test_function_declaration() {
         let input = r#"
             fn foo(x, y) {
-                let z = x + y
+                let z = x + y;
             }
         "#;
 
@@ -276,8 +287,8 @@ mod parser_test {
     }
 
     #[test]
-    fn test_function_call() {
-        let input = r#"foo(5)"#;
+    fn test_function_call_one_argument() {
+        let input = r#"foo(5);"#;
         let tokens = setup(input);
         let mut parser = Parser::new(&tokens);
 
@@ -287,7 +298,28 @@ mod parser_test {
             stmts,
             vec![Statement::FunctionCall {
                 name: "foo".to_string(),
-                arg: Some(Expression::Number(5)),
+                args: vec![Expression::Number(5)],
+            }]
+        );
+    }
+
+    #[test]
+    fn test_function_call_multiple_args() {
+        let input = r#"foo(5, 10, 15);"#;
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![Statement::FunctionCall {
+                name: "foo".to_string(),
+                args: vec![
+                    Expression::Number(5),
+                    Expression::Number(10),
+                    Expression::Number(15),
+                ],
             }]
         );
     }
@@ -296,9 +328,27 @@ mod parser_test {
     fn test_scope() {
         let input = r#"
             {
-                let x = 5
-                let y = 10
+                let x = 5;
+                let y = 10;
             }
         "#;
-    }
+        
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![Statement::Scope(vec![
+                Statement::VariableDecl {
+                    name: "x".to_string(),
+                    value: Some(Expression::Number(5)),
+                },
+                Statement::VariableDecl {
+                    name: "y".to_string(),
+                    value: Some(Expression::Number(10)),
+                },
+            ])]
+        )
+    }   
 }

@@ -11,7 +11,7 @@ pub enum Statement {
     },
     FunctionCall {
         name: String,
-        arg: Option<Expression>,
+        args: Vec<Expression>
     },
     Scope(Vec<Statement>),
 }

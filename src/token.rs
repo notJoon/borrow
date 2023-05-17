@@ -11,4 +11,6 @@ pub enum TokenType {
     CloseParen,
     Comma,
     Semicolon,
+    Plus,
+    Minus,
 }
