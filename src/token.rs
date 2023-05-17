@@ -13,4 +13,6 @@ pub enum TokenType {
     Semicolon,
     Plus,
     Minus,
+    Slash,
+    Asterisk,
 }

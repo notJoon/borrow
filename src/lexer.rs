@@ -41,6 +41,10 @@ impl<'a> Lexer<'a> {
                 ')' => TokenType::CloseParen,
                 ',' => TokenType::Comma,
                 ';' => TokenType::Semicolon,
+                '+' => TokenType::Plus,
+                '-' => TokenType::Minus,
+                '*' => TokenType::Asterisk,
+                '/' => TokenType::Slash,
                 _ => panic!("Invalid character: {c}"),
             };
 

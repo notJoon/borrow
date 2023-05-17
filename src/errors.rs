@@ -1,4 +1,2 @@
 #[derive(Debug)]
-pub enum Errors {
-    
-}
+pub enum Errors {}
