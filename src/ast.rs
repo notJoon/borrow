@@ -8,6 +8,7 @@ pub enum Statement {
     VariableDecl {
         name: String,
         value: Option<Expression>,
+        is_borrowed: bool,
     },
     FunctionCall {
         name: String,
@@ -39,4 +40,5 @@ pub enum Expression {
         op: BinaryOp,
         rhs: Box<Expression>,
     },
+    Reference(String),
 }

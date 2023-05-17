@@ -8,7 +8,6 @@ use crate::{
 /// It takes a slice of tokens as an argument.
 pub struct Parser<'a> {
     tokens: &'a [TokenType],
-    curr_token: Option<TokenType>,
     pos: usize,
 }
 
@@ -35,7 +34,6 @@ impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [TokenType]) -> Self {
         Parser {
             tokens,
-            curr_token: None,
             pos: 0,
         }
     }
@@ -76,14 +74,14 @@ impl<'a> Parser<'a> {
     fn statement(&mut self) -> Statement {
         match self.peek() {
             Some(TokenType::Fn) => self.function_definition(),
-            Some(TokenType::Let) => self.variable_definition(),
+            Some(TokenType::Let) => self.variable_declaration(),
             Some(TokenType::Ident(_)) => self.function_call(),
             Some(TokenType::OpenBrace) => self.scope(),
             _ => panic!("Unexpected token: {:?}", self.peek()),
         }
     }
 
-    fn variable_definition(&mut self) -> Statement {
+    fn variable_declaration(&mut self) -> Statement {
         self.expect(TokenType::Let, "Expected 'let'");
 
         let name = self.expect_identifier("Expected variable name");
@@ -94,9 +92,15 @@ impl<'a> Parser<'a> {
             None
         };
 
+        let is_borrowed = matches!(value, Some(Expression::Reference(_)));
+
         self.expect(TokenType::Semicolon, "Expected ';'");
 
-        Statement::VariableDecl { name, value }
+        Statement::VariableDecl {
+            name,
+            value,
+            is_borrowed,
+        }
     }
 
     fn function_definition(&mut self) -> Statement {
@@ -106,9 +110,12 @@ impl<'a> Parser<'a> {
         self.expect(TokenType::OpenParen, "Expected '('");
 
         let mut args = Vec::new();
+
+        // If there is at least one identifier token, it is an argument name
         if let Some(TokenType::Ident(_)) = self.peek() {
             args.push(self.expect_identifier("Expected argument name"));
 
+            // Continue processing comma-separated argument names
             while let Some(TokenType::Comma) = self.peek() {
                 self.advance(); // consume comma
                 args.push(self.expect_identifier("Expected argument name"));
@@ -117,6 +124,7 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenType::CloseParen, "Expected ')'");
 
+        // Process the body of the function, which is a scope
         let body = match self.scope() {
             Statement::Scope(stmts) => stmts,
             _ => panic!("Expected scope"),
@@ -156,10 +164,15 @@ impl<'a> Parser<'a> {
         Statement::FunctionCall { name, args }
     }
 
+    /// `scope` method handles scopes.
+    /// 
+    /// It takes `mut self` as an argument and returns a statement.
     fn scope(&mut self) -> Statement {
         self.expect(TokenType::OpenBrace, "Expected '{'");
 
         let mut stmts = Vec::new();
+
+        // process statements until we reach the end of the scope(`}`)
         while let Some(token) = self.peek() {
             if matches!(token, TokenType::CloseBrace) {
                 break;
@@ -170,32 +183,51 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenType::CloseBrace, "Expected '}'");
 
+        // create a new scope statement with the collected statements.
         Statement::Scope(stmts)
     }
 
     fn expression(&mut self) -> Expression {
         let mut expr = self.primary();
 
+        // process binary operators and references(`&`)
         while let Some(token) = self.peek() {
-            let op = match token {
-                TokenType::Plus => BinaryOp::Plus,
-                TokenType::Minus => BinaryOp::Minus,
-                TokenType::Asterisk => BinaryOp::Asterisk,
-                TokenType::Slash => BinaryOp::Slash,
-                _ => break,
-            };
-            
-            self.advance();
+            match token {
+                TokenType::Plus | TokenType::Minus | TokenType::Asterisk | TokenType::Slash => {
+                    let op = self.consume_operator();
+                    let right = self.primary();
 
-            let right = self.primary();
-            expr = Expression::BinaryOp {
-                lhs: Box::new(expr),
-                op,
-                rhs: Box::new(right),
-            };
+                    // create a new binary operation expression
+                    expr = Expression::BinaryOp {
+                        lhs: Box::new(expr),
+                        op,
+                        rhs: Box::new(right),
+                    };
+                }
+
+                // process references: `&`
+                TokenType::Ampersand => {
+                    self.advance();
+
+                    expr = Expression::Reference(self.expect_identifier("Expected identifier"));
+                }
+                _ => break,
+            }
         }
 
         expr
+    }
+
+    fn consume_operator(&mut self) -> BinaryOp {
+        let token = self.advance();
+
+        match token {
+            Some(TokenType::Plus) => BinaryOp::Plus,
+            Some(TokenType::Minus) => BinaryOp::Minus,
+            Some(TokenType::Asterisk) => BinaryOp::Asterisk,
+            Some(TokenType::Slash) => BinaryOp::Slash,
+            _ => panic!("Unexpected token: {token:?}"),
+        }
     }
 
     fn primary(&mut self) -> Expression {
@@ -264,9 +296,7 @@ mod parser_test {
 
     fn setup(input: &str) -> Vec<TokenType> {
         let mut lexer = Lexer::new(input);
-        let tokens = lexer
-            .tokenize()
-            .expect("Failed to tokenize");
+        let tokens = lexer.tokenize().expect("Failed to tokenize");
 
         tokens
     }
@@ -292,6 +322,7 @@ mod parser_test {
                     op: BinaryOp::Minus,
                     rhs: Box::new(Expression::Number(4)),
                 }),
+                is_borrowed: false,
             }]
         )
     }
@@ -309,6 +340,7 @@ mod parser_test {
             vec![Statement::VariableDecl {
                 name: "x".to_string(),
                 value: Some(Expression::Number(10)),
+                is_borrowed: false,
             }]
         );
     }
@@ -336,10 +368,12 @@ mod parser_test {
                     Statement::VariableDecl {
                         name: "z".to_string(),
                         value: Some(Expression::Ident("x".to_string())),
+                        is_borrowed: false,
                     },
                     Statement::VariableDecl {
                         name: "a".to_string(),
                         value: Some(Expression::Ident("y".to_string())),
+                        is_borrowed: false,
                     },
                 ],
             }]
@@ -403,10 +437,12 @@ mod parser_test {
                 Statement::VariableDecl {
                     name: "x".to_string(),
                     value: Some(Expression::Number(5)),
+                    is_borrowed: false,
                 },
                 Statement::VariableDecl {
                     name: "y".to_string(),
                     value: Some(Expression::Number(10)),
+                    is_borrowed: false,
                 },
             ])]
         )

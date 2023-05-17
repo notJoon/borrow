@@ -15,4 +15,5 @@ pub enum TokenType {
     Minus,
     Slash,
     Asterisk,
+    Ampersand,
 }
