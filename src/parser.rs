@@ -32,10 +32,7 @@ impl<'a> Parser<'a> {
     /// let parser = Parser::new(&tokens);
     /// ```
     pub fn new(tokens: &'a [TokenType]) -> Self {
-        Parser {
-            tokens,
-            pos: 0,
-        }
+        Parser { tokens, pos: 0 }
     }
 
     /// `parse` method is used to parse the tokens into statements.
@@ -165,7 +162,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `scope` method handles scopes.
-    /// 
+    ///
     /// It takes `mut self` as an argument and returns a statement.
     fn scope(&mut self) -> Statement {
         self.expect(TokenType::OpenBrace, "Expected '{'");

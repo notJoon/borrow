@@ -22,10 +22,7 @@ pub enum Statement {
     ///
     /// Contains the name of the function and the arguments
     /// passed to the function as a vector of expressions.
-    FunctionCall {
-        name: String,
-        args: Vec<Expression>,
-    },
+    FunctionCall { name: String, args: Vec<Expression> },
     /// Represents a scope or block of statements.
     ///
     /// Contains a vector of statements representing the

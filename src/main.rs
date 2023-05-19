@@ -1,8 +1,7 @@
 mod ast;
-mod errors;
+mod borrow_checker;
 mod lexer;
 mod parser;
 mod token;
-mod borrow;
 
 fn main() {}
