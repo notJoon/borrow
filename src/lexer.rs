@@ -111,18 +111,18 @@ impl<'a> Lexer<'a> {
     }
 }
 
-macro_rules! assert_tokens {
-    ($lexer:expr, $( $token:expr ), *) => {
-        $(
-            assert_eq!($lexer.next_token().unwrap(), $token);
-        )*
-        assert!($lexer.next_token().is_none());
-    };
-}
-
 #[cfg(test)]
 mod lexer_tests {
     use super::*;
+
+    macro_rules! assert_tokens {
+        ($lexer:expr, $( $token:expr ), *) => {
+            $(
+                assert_eq!($lexer.next_token().unwrap(), $token);
+            )*
+            assert!($lexer.next_token().is_none());
+        };
+    }
 
     #[test]
     fn test_lexer() {
