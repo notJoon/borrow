@@ -106,16 +106,29 @@ impl<'a> Parser<'a> {
         let name = self.expect_identifier("Expected function name");
         self.expect(TokenType::OpenParen, "Expected '('");
 
+        // store the function arguments in a vector
         let mut args = Vec::new();
 
         // If there is at least one identifier token, it is an argument name
-        if let Some(TokenType::Ident(_)) = self.peek() {
-            args.push(self.expect_identifier("Expected argument name"));
+        while let Some(token) = self.peek() {
+            match token {
+                TokenType::Ident(_) => {
+                    args.push(self.expect_identifier("Expected argument name"));
+                }
+                TokenType::Ampersand => {
+                    // consume the `&`
+                    self.advance();
 
-            // Continue processing comma-separated argument names
-            while let Some(TokenType::Comma) = self.peek() {
-                self.advance(); // consume comma
-                args.push(self.expect_identifier("Expected argument name"));
+                    let arg_name = format!("&{}", self.expect_identifier("Expected argument name"));
+                    args.push(arg_name);
+                }
+                _ => break,
+            }
+
+            // continue processing comma-separated arguments
+            if let Some(TokenType::Comma) = self.peek() {
+                // consume the comma
+                self.advance(); 
             }
         }
 
@@ -201,13 +214,6 @@ impl<'a> Parser<'a> {
                         rhs: Box::new(right),
                     };
                 }
-
-                // process references: `&`
-                TokenType::Ampersand => {
-                    self.advance();
-
-                    expr = Expression::Reference(self.expect_identifier("Expected identifier"));
-                }
                 _ => break,
             }
         }
@@ -233,6 +239,14 @@ impl<'a> Parser<'a> {
         match token {
             Some(TokenType::Ident(name)) => Expression::Ident(name.clone()),
             Some(TokenType::Number(value)) => Expression::Number(*value),
+            Some(TokenType::Ampersand) => {
+                let var_name = match self.advance() {
+                    Some(TokenType::Ident(name)) => name.clone(),
+                    _ => panic!("Expected identifier after `&`"),
+                };
+
+                Expression::Reference(var_name.clone())
+            }
             _ => panic!("Unexpected token: {token:?}"),
         }
     }
@@ -443,5 +457,92 @@ mod parser_test {
                 },
             ])]
         )
+    }
+
+    #[test]
+    fn parse_reference_variable() {
+        // let foo = &bar;
+        let tokens = vec![
+            TokenType::Let,
+            TokenType::Ident("foo".to_string()),
+            TokenType::Equals,
+            TokenType::Ampersand,
+            TokenType::Ident("bar".to_string()),
+            TokenType::Semicolon,
+        ];
+
+        let mut parser = Parser::new(&tokens);
+        let statements = parser.parse();
+
+        assert_eq!(statements.len(), 1);
+        match &statements[0] {
+            Statement::VariableDecl { name, value, is_borrowed } => {
+                assert_eq!(name, "foo");
+                assert_eq!(is_borrowed, &true);
+                match value {
+                    Some(Expression::Reference(name)) => assert_eq!(name, "bar"),
+                    _ => panic!("Expected reference expression"),
+                }
+            }
+            _ => panic!("Expected variable declaration"),
+        }
+    }
+
+    #[test]
+    fn parse_function_definition_with_reference_argument() {
+        // fn foo(&bar) {}
+        let tokens = vec![
+            TokenType::Fn,
+            TokenType::Ident("foo".to_string()),
+            TokenType::OpenParen,
+            TokenType::Ampersand,
+            TokenType::Ident("bar".to_string()),
+            TokenType::CloseParen,
+            TokenType::OpenBrace,
+            TokenType::CloseBrace,
+        ];
+
+        let mut parser = Parser::new(&tokens);
+        let statements = parser.parse();
+
+        assert_eq!(statements.len(), 1);
+        match &statements[0] {
+            Statement::FunctionDef { name, args, .. } => {
+                assert_eq!(name, "foo");
+                assert!(args.is_some());
+                assert_eq!(args.as_ref().unwrap().len(), 1);
+                assert_eq!(args.as_ref().unwrap()[0], "&bar");
+            },
+            _ => panic!("Expected function definition"),
+        }
+    }
+
+    #[test]
+    fn parse_function_call_with_reference_argument() {
+        // foo(&bar);
+        let tokens = vec![
+            TokenType::Ident("foo".to_string()),
+            TokenType::OpenParen,
+            TokenType::Ampersand,
+            TokenType::Ident("bar".to_string()),
+            TokenType::CloseParen,
+            TokenType::Semicolon,
+        ];
+
+        let mut parser = Parser::new(&tokens);
+        let statements = parser.parse();
+
+        assert_eq!(statements.len(), 1);
+        match &statements[0] {
+            Statement::FunctionCall { name, args } => {
+                assert_eq!(name, "foo");
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    Expression::Reference(name) => assert_eq!(name, "bar"),
+                    _ => panic!("Expected reference expression"),
+                }
+            },
+            _ => panic!("Expected function call"),
+        }
     }
 }
