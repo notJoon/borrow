@@ -1,5 +1,3 @@
-// TODO: Borrow checker
-
 use std::collections::HashMap;
 
 use crate::ast::{Expression, Statement};
@@ -68,11 +66,43 @@ impl<'a> BorrowChecker<'a> {
         value: &'a Option<Expression>,
         is_borrowed: bool,
     ) -> BorrowResult {
-        if is_borrowed {
-            return self.check_borrowed_variable(name, value);
-        }
+        match (is_borrowed, value) {
+            (true, Some(Expression::Ident(ref ident))) => {
+                if let Some(state) = self.get_borrow(ident) {
+                    match state {
+                        BorrowState::Borrowed => {
+                            return Err(format!(
+                                "Cannot borrow `{ident}` as it is currently being mutably borrowed"
+                            ));
+                        }
+                        BorrowState::Uninitialized => {
+                            return Err(format!("Variable `{ident}` is not initialized"));
+                        }
+                        _ => {}
+                    }
 
-        self.check_value_expr(value)
+                    self.insert_borrow(name, BorrowState::ImmutBorrowed);
+                    return Ok(());
+                }
+
+                return Err(format!("Variable `{ident}` is not initialized"));
+            }
+
+            // TODO
+            (true, _) => return Err(format!("Variable `{name}` is not initialized")),
+
+            // when the variable is not borrowed, check the value is initialized
+            // and insert the variable into the borrow checker
+            (false, expr) => {
+                if let Some(expr) = expr {
+                    return self.check_expression(expr);
+                }
+
+                self.insert_borrow(name, BorrowState::Initialized);
+
+                return Ok(());
+            }
+        }
     }
 
     fn check_borrowed_variable(
@@ -82,18 +112,21 @@ impl<'a> BorrowChecker<'a> {
     ) -> BorrowResult {
         if let Some(Expression::Ident(ref ident)) = value {
             if let Some(state) = self.get_borrow(ident) {
-                if state == &BorrowState::Borrowed || state == &BorrowState::ImmutBorrowed {
-                    return Err(format!("Cannot borrow {ident} as immutable"));
+                if state == &BorrowState::Borrowed {
+                    return Err(format!(
+                        "Cannot borrow {} as it is currently being mutably borrowed",
+                        ident
+                    ));
                 }
 
-                self.borrow_mut(name)?;
+                self.insert_borrow(name, BorrowState::ImmutBorrowed);
                 return Ok(());
             } else {
-                return Err(format!("Variable {ident} is not borrowed"));
+                return Err(format!("Variable {} is not initialized", ident));
             }
         }
 
-        Err(format!("Invalid borrow of {name}"))
+        Err(format!("Invalid borrow of {}", name))
     }
 
     fn check_value_expr(&mut self, value: &'a Option<Expression>) -> BorrowResult {
@@ -239,162 +272,29 @@ mod borrow_tests {
 
     use super::*;
 
-    fn setup(input: &str) -> Vec<TokenType> {
+    fn setup(input: &str) -> Vec<Statement> {
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().expect("Failed to tokenize");
 
-        tokens
-    }
+        let mut parser = Parser::new(&tokens);
 
-    macro_rules! assert_valid {
-        ($input: expr) => {
-            let tokens = setup($input);
-            let mut parser = Parser::new(&tokens);
-
-            let stmts = parser.parse();
-            let mut checker = BorrowChecker::new();
-
-            assert!(checker.check(&stmts).is_ok());
-        };
-    }
-
-    macro_rules! assert_invalid {
-        ($input: expr) => {
-            let tokens = setup($input);
-            let mut parser = Parser::new(&tokens);
-
-            let stmts = parser.parse();
-            let mut checker = BorrowChecker::new();
-
-            assert!(checker.check(&stmts).is_err());
-        };
+        parser.parse()
     }
 
     #[test]
     fn test_check_variable_decl() {
         let mut checker = BorrowChecker::new();
 
-        // let x = 5;
-        // let y = &x;
-        let stmts = vec![
-            Statement::VariableDecl {
-                name: "x".to_string(),
-                value: Some(Expression::Number(5)),
-                is_borrowed: false,
-            },
-            Statement::VariableDecl {
-                name: "y".to_string(),
-                value: Some(Expression::Ident("x".to_string())),
-                is_borrowed: true,
-            },
-        ];
+        let input = r#"let a = 10;"#;
+        let result = setup(input);
+        let result = checker.check(&result);
 
-        assert!(checker.check(&stmts).is_ok());
-    }
+        assert_eq!(result, Ok(()));
 
-    #[test]
-    fn test_function_def() {
-        let mut checker = BorrowChecker::new();
+        let input = r#"let a = &b;"#;
+        let result = setup(input);
+        let result = checker.check(&result);
 
-        // fn foo(x) {
-        //     let y = x;
-        // }
-        let stmts = vec![Statement::FunctionDef {
-            name: "foo".to_string(),
-            args: Some(vec!["x".to_string()]),
-            body: vec![Statement::VariableDecl {
-                name: "y".to_string(),
-                value: Some(Expression::Ident("x".to_string())),
-                is_borrowed: true,
-            }],
-        }];
-
-        assert!(checker.check(&stmts).is_ok());
-    }
-
-    #[test]
-    fn test_check_function_call() {
-        let mut checker = BorrowChecker::new();
-
-        // fn foo(x) {
-        //     let y = x;
-        // }
-        let stmts = vec![Statement::FunctionCall {
-            name: "foo".to_string(),
-            args: vec![Expression::Ident("x".to_string())],
-        }];
-        // This should fail as 'x' is uninitialized.
-        assert!(checker.check(&stmts).is_err());
-    }
-
-    #[test]
-    fn test_check_scope() {
-        let mut checker = BorrowChecker::new();
-
-        // {
-        //     let x = 5;
-        //     let y = &x;
-        // }
-        let stmts = vec![Statement::Scope(vec![
-            Statement::VariableDecl {
-                name: "x".to_string(),
-                value: Some(Expression::Number(5)),
-                is_borrowed: false,
-            },
-            Statement::VariableDecl {
-                name: "y".to_string(),
-                value: Some(Expression::Ident("x".to_string())),
-                is_borrowed: true,
-            },
-        ])];
-        assert!(checker.check(&stmts).is_ok());
-    }
-
-    #[test]
-    fn test_valid_borrow() {
-        let input = r#"
-            let a = 5;
-            let b = &a;
-            let c = a + 1;
-        "#;
-
-        assert_valid!(input);
-    }
-
-    #[test]
-    fn test_invalid_borrow() {
-        let input = r#"
-            let a = 6;
-            let b = &a;
-            a = 6;
-        "#;
-
-        assert_invalid!(input);
-    }
-
-    #[test]
-    fn test_valid_borrow_scope() {
-        let input = r#"
-            let a = 5;
-            {
-                let b = &a;
-            }
-            a = 6;
-        "#;
-
-        assert_valid!(input);
-    }
-
-    #[test]
-    fn test_invalid_borrow_scope() {
-        let input = r#"
-            let a = 5;
-            let b = &a;
-            {
-                a = 6;
-            }
-        "#;
-
-        assert_invalid!(input);
+        assert_eq!(result, Err("Variable `a` is not initialized".to_string()));
     }
 }

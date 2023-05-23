@@ -128,7 +128,7 @@ impl<'a> Parser<'a> {
             // continue processing comma-separated arguments
             if let Some(TokenType::Comma) = self.peek() {
                 // consume the comma
-                self.advance(); 
+                self.advance();
             }
         }
 
@@ -476,7 +476,11 @@ mod parser_test {
 
         assert_eq!(statements.len(), 1);
         match &statements[0] {
-            Statement::VariableDecl { name, value, is_borrowed } => {
+            Statement::VariableDecl {
+                name,
+                value,
+                is_borrowed,
+            } => {
                 assert_eq!(name, "foo");
                 assert_eq!(is_borrowed, &true);
                 match value {
@@ -512,7 +516,7 @@ mod parser_test {
                 assert!(args.is_some());
                 assert_eq!(args.as_ref().unwrap().len(), 1);
                 assert_eq!(args.as_ref().unwrap()[0], "&bar");
-            },
+            }
             _ => panic!("Expected function definition"),
         }
     }
@@ -541,7 +545,7 @@ mod parser_test {
                     Expression::Reference(name) => assert_eq!(name, "bar"),
                     _ => panic!("Expected reference expression"),
                 }
-            },
+            }
             _ => panic!("Expected function call"),
         }
     }
