@@ -100,7 +100,7 @@ impl<'a> BorrowChecker<'a> {
 
                 self.insert_borrow(name, BorrowState::Initialized);
 
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -113,20 +113,17 @@ impl<'a> BorrowChecker<'a> {
         if let Some(Expression::Ident(ref ident)) = value {
             if let Some(state) = self.get_borrow(ident) {
                 if state == &BorrowState::Borrowed {
-                    return Err(format!(
-                        "Cannot borrow {} as it is currently being mutably borrowed",
-                        ident
-                    ));
+                    return Err(format!("Cannot borrow {ident} as it is currently being mutably borrowed"));
                 }
 
                 self.insert_borrow(name, BorrowState::ImmutBorrowed);
                 return Ok(());
             } else {
-                return Err(format!("Variable {} is not initialized", ident));
+                return Err(format!("Variable {ident} is not initialized"));
             }
         }
 
-        Err(format!("Invalid borrow of {}", name))
+        Err(format!("Invalid borrow of {name}"))
     }
 
     fn check_value_expr(&mut self, value: &'a Option<Expression>) -> BorrowResult {
@@ -169,7 +166,7 @@ impl<'a> BorrowChecker<'a> {
     ///
     /// It should ensure that the args passed to the function aren't
     /// violating any borrow rules.
-    fn check_function_call(&mut self, _name: &String, args: &'a Vec<Expression>) -> BorrowResult {
+    fn check_function_call(&mut self, _name: &str, args: &'a Vec<Expression>) -> BorrowResult {
         for arg in args {
             self.check_expression(arg)?;
         }

@@ -245,7 +245,7 @@ impl<'a> Parser<'a> {
                     _ => panic!("Expected identifier after `&`"),
                 };
 
-                Expression::Reference(var_name.clone())
+                Expression::Reference(var_name)
             }
             _ => panic!("Unexpected token: {token:?}"),
         }
