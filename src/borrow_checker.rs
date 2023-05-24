@@ -66,17 +66,6 @@ impl<'a> BorrowChecker<'a> {
         value: &'a Option<Expression>,
         is_borrowed: bool,
     ) -> BorrowResult {
-        // if !is_borrowed && value.is_none() {
-        //     return Err(format!("Variable `{name}` is declared without an initial value"));
-        // }
-
-        // // if the variable has assigned referenced value that is not declared before
-        // // should return error
-        // if let Some(Expression::Reference(var)) = value {
-        //     if !self.is_borrow_contains_key(var) {
-        //         return Err(format!("cannot assign reference to undeclared variable `{var}`"));
-        //     }
-        // }
         match (is_borrowed, value) {
             (true, Some(Expression::Reference(ref ident))) => {
                 if let Some(state) = self.get_borrow(ident) {
@@ -388,6 +377,26 @@ mod borrow_tests {
             let a = 10;
             let b = &a;
             let c = &b;
+        "#;
+
+        let mut checker = BorrowChecker::new();
+
+        let result = setup(input);
+        let result = checker.check(&result);
+
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn test_nested_scope() {
+        let input = r#"
+            function foo(x) {
+                let a = x;
+                {
+                    let b = &a;
+                }
+                let c = &a;
+            }
         "#;
 
         let mut checker = BorrowChecker::new();

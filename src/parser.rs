@@ -15,22 +15,6 @@ impl<'a> Parser<'a> {
     /// `new` method is used to create a new parser.
     ///
     /// It takes a slice of tokens as an argument and returns a new parser.
-    ///     
-    /// # Example
-    ///
-    /// ```
-    /// use parser::Parser;
-    /// use token::TokenType;
-    ///
-    /// let tokens = vec![
-    ///     TokenType::Let,
-    ///     TokenType::Ident("x".to_string()),
-    ///     TokenType::Equals,
-    ///     TokenType::Number(10)
-    /// ];
-    ///
-    /// let parser = Parser::new(&tokens);
-    /// ```
     pub fn new(tokens: &'a [TokenType]) -> Self {
         Parser { tokens, pos: 0 }
     }
@@ -104,55 +88,43 @@ impl<'a> Parser<'a> {
         self.expect(TokenType::Fn, "Expected 'function'");
 
         let name = self.expect_identifier("Expected function name");
-        self.expect(TokenType::OpenParen, "Expected '('");
+        self.expect(TokenType::OpenParen, "Expected '( 1'");
 
         // store the function arguments in a vector
         let mut args = Vec::new();
 
-        // If there is at least one identifier token, it is an argument name
         while let Some(token) = self.peek() {
-            match token {
-                TokenType::Ident(_) => {
-                    args.push(self.expect_identifier("Expected argument name"));
-                }
-                TokenType::Ampersand => {
-                    // consume the `&`
-                    self.advance();
-
-                    let arg_name = format!("&{}", self.expect_identifier("Expected argument name"));
-                    args.push(arg_name);
-                }
-                _ => break,
+            if matches!(token, TokenType::CloseParen) {
+                break;
             }
 
-            // continue processing comma-separated arguments
+            args.push(self.expect_identifier("Expected argument name"));
+
+            // continue processing arguments if there are multiple arguments
             if let Some(TokenType::Comma) = self.peek() {
-                // consume the comma
                 self.advance();
             }
         }
 
         self.expect(TokenType::CloseParen, "Expected ')'");
 
-        // Process the body of the function, which is a scope
+        // process the body of the function, which is a scope
         let body = match self.scope() {
             Statement::Scope(stmts) => stmts,
-            _ => panic!("Expected scope"),
+            _ => panic!("Expected function body"),
         };
 
         Statement::FunctionDef {
             name,
-            args: if args.is_empty() { None } else { Some(args) },
+            args: Some(args),
             body,
         }
     }
 
     /// `function_call` method handles function calls.
-    ///
-    /// It takes mut self as an argument and returns a statement.
     fn function_call(&mut self) -> Statement {
         let name = self.expect_identifier("Expected function name");
-        self.expect(TokenType::OpenParen, "Expected '('");
+        self.expect(TokenType::OpenParen, "Expected '( 2'");
 
         let mut args = Vec::new();
         while let Some(token) = self.peek() {
@@ -357,11 +329,105 @@ mod parser_test {
     }
 
     #[test]
-    #[ignore = "todo"]
     fn test_function_declaration() {
+        let input = r#"function foo() {}"#;
+        let tokens = setup(input);
+
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![Statement::FunctionDef {
+                name: "foo".to_string(),
+                args: Some(Vec::new()),
+                body: Vec::new(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_function_declaration_multiple_params() {
+        let input = r#"function foo(x, y, z) {}"#;
+        let tokens = setup(input);
+
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![Statement::FunctionDef {
+                name: "foo".to_string(),
+                args: Some(vec!["x".to_string(), "y".to_string(), "z".to_string()]),
+                body: Vec::new(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_function_declaration_no_param_and_have_function_body() {
+        let input = r#"function foo() { let x = 10; }"#;
+        let tokens = setup(input);
+
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![Statement::FunctionDef {
+                name: "foo".to_string(),
+                args: Some(Vec::new()),
+                body: vec![Statement::VariableDecl {
+                    name: "x".to_string(),
+                    value: Some(Expression::Number(10)),
+                    is_borrowed: false,
+                }],
+            }]
+        );
+    }
+
+    #[test]
+    fn test_function_declaration_multiple_params_and_function_body() {
         let input = r#"
-            fn foo(x) {
-                
+            function foo(x, y, z) { 
+                let a = 10; 
+                let b = 20; 
+            }
+        "#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+        
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![Statement::FunctionDef {
+                name: "foo".to_string(),
+                args: Some(vec!["x".to_string(), "y".to_string(), "z".to_string()]),
+                body: vec![
+                    Statement::VariableDecl {
+                        name: "a".to_string(),
+                        value: Some(Expression::Number(10)),
+                        is_borrowed: false,
+                    },
+                    Statement::VariableDecl {
+                        name: "b".to_string(),
+                        value: Some(Expression::Number(20)),
+                        is_borrowed: false,
+                    },
+                ],
+            }]
+        );
+    }
+
+    #[test]
+    fn test_function_declaration_that_contains_reference() {
+        let input = r#"
+            function foo(x) { 
+                let a = 10; 
+                let b = &a;
+                let c = &x; 
             }
         "#;
 
@@ -374,17 +440,22 @@ mod parser_test {
             stmts,
             vec![Statement::FunctionDef {
                 name: "foo".to_string(),
-                args: Some(vec!["x".to_string(), "y".to_string()]),
+                args: Some(vec!["x".to_string()]),
                 body: vec![
                     Statement::VariableDecl {
-                        name: "z".to_string(),
-                        value: Some(Expression::Ident("x".to_string())),
+                        name: "a".to_string(),
+                        value: Some(Expression::Number(10)),
                         is_borrowed: false,
                     },
                     Statement::VariableDecl {
-                        name: "a".to_string(),
-                        value: Some(Expression::Ident("y".to_string())),
-                        is_borrowed: false,
+                        name: "b".to_string(),
+                        value: Some(Expression::Reference("a".to_string())),
+                        is_borrowed: true,
+                    },
+                    Statement::VariableDecl {
+                        name: "c".to_string(),
+                        value: Some(Expression::Reference("x".to_string())),
+                        is_borrowed: true,
                     },
                 ],
             }]
