@@ -66,41 +66,57 @@ impl<'a> BorrowChecker<'a> {
         value: &'a Option<Expression>,
         is_borrowed: bool,
     ) -> BorrowResult {
+        // if !is_borrowed && value.is_none() {
+        //     return Err(format!("Variable `{name}` is declared without an initial value"));
+        // }
+
+        // // if the variable has assigned referenced value that is not declared before
+        // // should return error
+        // if let Some(Expression::Reference(var)) = value {
+        //     if !self.is_borrow_contains_key(var) {
+        //         return Err(format!("cannot assign reference to undeclared variable `{var}`"));
+        //     }
+        // }
         match (is_borrowed, value) {
-            (true, Some(Expression::Ident(ref ident))) => {
+            (true, Some(Expression::Reference(ref ident))) => {
                 if let Some(state) = self.get_borrow(ident) {
                     match state {
-                        BorrowState::Borrowed => {
+                        BorrowState::Borrowed | BorrowState::ImmutBorrowed => {
                             return Err(format!(
-                                "Cannot borrow `{ident}` as it is currently being mutably borrowed"
+                                "Cannot borrow {ident} as it is currently being mutably borrowed"
                             ));
                         }
                         BorrowState::Uninitialized => {
-                            return Err(format!("Variable `{ident}` is not initialized"));
+                            return Err(format!(
+                                "Variable {ident} is declared without an initial value"
+                            ));
                         }
                         _ => {}
                     }
 
                     self.insert_borrow(name, BorrowState::ImmutBorrowed);
+                    self.insert_borrow(name, BorrowState::Initialized);
+
                     return Ok(());
                 }
 
-                return Err(format!("Variable `{ident}` is not initialized"));
+                return Err(format!("Cannot borrow {ident} because it is not defined"));
             }
-
-            // TODO
-            (true, _) => return Err(format!("Variable `{name}` is not initialized")),
-
-            // when the variable is not borrowed, check the value is initialized
-            // and insert the variable into the borrow checker
-            (false, expr) => {
-                if let Some(expr) = expr {
-                    return self.check_expression(expr);
-                }
-
+            (true, _) => {
+                return Err(format!(
+                    "Variable {name} is not initialized"
+                ));
+            }
+            (false, Some(expr)) => {
+                self.check_expression(expr)?;
                 self.insert_borrow(name, BorrowState::Initialized);
 
-                Ok(())
+                return Ok(());
+            }
+            (false, None) => {
+                return Err(format!(
+                    "Variable {name} is declared without an initial value"
+                ));
             }
         }
     }
@@ -113,13 +129,15 @@ impl<'a> BorrowChecker<'a> {
         if let Some(Expression::Ident(ref ident)) = value {
             if let Some(state) = self.get_borrow(ident) {
                 if state == &BorrowState::Borrowed {
-                    return Err(format!("Cannot borrow {ident} as it is currently being mutably borrowed"));
+                    return Err(format!(
+                        "Error: Cannot borrow {ident} as it is currently being mutably borrowed"
+                    ));
                 }
 
                 self.insert_borrow(name, BorrowState::ImmutBorrowed);
                 return Ok(());
             } else {
-                return Err(format!("Variable {ident} is not initialized"));
+                return Err(format!("Error: Variable {ident} is not initialized"));
             }
         }
 
@@ -169,6 +187,14 @@ impl<'a> BorrowChecker<'a> {
     fn check_function_call(&mut self, _name: &str, args: &'a Vec<Expression>) -> BorrowResult {
         for arg in args {
             self.check_expression(arg)?;
+
+            if let Expression::Ident(ident) = arg {
+                if let Some(BorrowState::Borrowed) = self.get_borrow(ident) {
+                    return Err(format!(
+                        "Cannot borrow {ident} as it is currently being mutably borrowed"
+                    ));
+                }
+            }
         }
 
         Ok(())
@@ -196,12 +222,32 @@ impl<'a> BorrowChecker<'a> {
     /// ensuring that any identifiers are borrowed references, they aren't being
     /// used in a way that would violate the borrow rules.
     fn check_expression(&mut self, expr: &'a Expression) -> BorrowResult {
-        if let Expression::Reference(var) = expr {
-            let borrow = self.get_borrow(var);
+        match expr {
+            // if the expression is a reference, check if the variable is already borrowed
+            Expression::Reference(var) => {
+                let borrow = self.get_borrow(var);
 
-            if let Some(BorrowState::Borrowed) = borrow {
-                return Err(format!("Cannot borrow {var} as immutable"));
+                if let Some(BorrowState::Borrowed) = borrow {
+                    return Err(format!(
+                        "Cannot borrow {var} as it is currently being mutably borrowed"
+                    ));
+                }
             }
+
+            // if the expression is a binary operation, check the lhs and rhs
+            Expression::BinaryOp { lhs, op: _, rhs } => {
+                self.check_expression(lhs)?;
+                self.check_expression(rhs)?;
+            }
+
+            // if the expression is an identifier, check if the variable is already borrowed
+            Expression::Ident(ident) => {
+                if let None = self.get_borrow(ident) {
+                    return Err(format!("Variable {ident} is not initialized"));
+                }
+            }
+
+            _ => {}
         }
 
         Ok(())
@@ -265,7 +311,7 @@ impl<'a> BorrowChecker<'a> {
 
 #[cfg(test)]
 mod borrow_tests {
-    use crate::{lexer::Lexer, parser::Parser, token::TokenType};
+    use crate::{lexer::Lexer, parser::Parser};
 
     use super::*;
 
@@ -292,6 +338,63 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
-        assert_eq!(result, Err("Variable `a` is not initialized".to_string()));
+        assert_eq!(result, Err("Cannot borrow b because it is not defined".to_string()));
+    }
+
+    #[test]
+    fn test_check_variable_decl_undeclared_borrow_as_parsed_form() {
+        let mut checker = BorrowChecker::new();
+
+        // let b = &a;
+        let stmts = vec![Statement::VariableDecl {
+            name: "b".to_string(),
+            value: Some(Expression::Reference("a".to_string())),
+            is_borrowed: true,
+        }];
+
+        assert!(checker.check(&stmts).is_err());
+    }
+
+    #[test]
+    fn test_check_variable_decl_is_valid() {
+        let input = r#"
+            let a = 10;
+            let b = &a;
+        "#;
+
+        let mut checker = BorrowChecker::new();
+
+        let result = setup(input);
+        let result = checker.check(&result);
+
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn test_check_variable_decl_uninitialized() {
+        let input = r#"let a;"#;
+
+        let mut checker = BorrowChecker::new();
+        
+        let result = setup(input);
+        let result = checker.check(&result);
+
+        assert_eq!(result, Err("Variable a is declared without an initial value".to_string()));
+    }
+
+    #[test]
+    fn test_check_variable_decl_with_chain_reference() {
+        let input = r#"
+            let a = 10;
+            let b = &a;
+            let c = &b;
+        "#;
+
+        let mut checker = BorrowChecker::new();
+
+        let result = setup(input);
+        let result = checker.check(&result);
+
+        assert_eq!(result, Ok(()));
     }
 }

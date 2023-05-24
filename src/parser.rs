@@ -460,6 +460,135 @@ mod parser_test {
     }
 
     #[test]
+    fn test_parse_reference_and_allocate_new_variable() {
+        let input = r#"
+            let a = 10;
+            let b = &a;
+            let c = &b;
+        "#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![
+                Statement::VariableDecl { 
+                    name: "a".to_string(), 
+                    value: Some(Expression::Number(10)), 
+                    is_borrowed: false,
+                },
+                Statement::VariableDecl {
+                    name: "b".to_string(),
+                    value: Some(Expression::Reference("a".to_string())),
+                    is_borrowed: true,
+                },
+                Statement::VariableDecl { 
+                    name: "c".to_string(), 
+                    value: Some(Expression::Reference("b".to_string())), 
+                    is_borrowed: true,
+                },
+            ]
+        )
+    }
+
+    #[test]
+    fn test_initialize_variable_invalid_way() {
+        let input = r#"let a;"#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![Statement::VariableDecl {
+                name: "a".to_string(),
+                value: None,
+                is_borrowed: false,
+            }]
+        )
+    }
+
+    #[test]
+    fn test_variable_pass_uninitialized_reference_value() {
+        let input = r#"let a = &b;"#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+
+        assert_eq!(
+            parser.parse(),
+            vec![Statement::VariableDecl {
+                name: "a".to_string(),
+                value: Some(Expression::Reference("b".to_string())),
+                is_borrowed: true,
+            }]
+        )
+    }
+
+    #[test]
+    fn test_pass_invalid_declare_to_new_parameter() {
+        let input = r#"
+            let a;
+            let b = &a;
+        "#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![
+                Statement::VariableDecl {
+                    name: "a".to_string(),
+                    value: None,
+                    is_borrowed: false,
+                },
+                Statement::VariableDecl {
+                    name: "b".to_string(),
+                    value: Some(Expression::Reference("a".to_string())),
+                    is_borrowed: true,
+                },
+            ]
+        )
+    }
+
+    #[test]
+    fn test_initialize_variable_and_update_its_value() {
+        let input = r#"
+            let a = 10;
+            let b = a + 5;
+        "#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![
+                Statement::VariableDecl {
+                    name: "a".to_string(),
+                    value: Some(Expression::Number(10)),
+                    is_borrowed: false,
+                },
+                Statement::VariableDecl {
+                    name: "b".to_string(),
+                    value: Some(Expression::BinaryOp {
+                        lhs: Box::new(Expression::Ident("a".to_string())),
+                        op: BinaryOp::Plus,
+                        rhs: Box::new(Expression::Number(5)),
+                    }),
+                    is_borrowed: false,
+                },
+            ]
+        )
+    }
+
+    #[test]
     fn parse_reference_variable() {
         // let foo = &bar;
         let tokens = vec![
