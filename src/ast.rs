@@ -6,6 +6,8 @@ pub enum Statement {
     /// and the body of the function as a vector of statements.
     FunctionDef {
         name: String,
+        // in `args` field, The bool indicates whether the argument is borrowed.
+        // related methods: `Parser::parse_argument_reference` and `Parser::parse_arguments`
         args: Option<Vec<(String, bool)>>,
         body: Vec<Statement>,
     },
