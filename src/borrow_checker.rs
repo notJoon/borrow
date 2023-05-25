@@ -53,7 +53,6 @@ impl<'a> BorrowChecker<'a> {
             }
             Statement::FunctionCall { name, args } => self.check_function_call(name, args),
             Statement::Scope(stmts) => self.check_scope(stmts),
-            _ => Ok(()), // for other types of statements, we do nothing for now
         }
     }
     /// `check_variable_decl` method checks a variable declaration, like `let x = 5;` or `let b = &a`.
@@ -89,10 +88,10 @@ impl<'a> BorrowChecker<'a> {
                     return Ok(());
                 }
 
-                return Err(format!("Cannot borrow {ident} because it is not defined"));
+                Err(format!("Cannot borrow {ident} because it is not defined"))
             }
             (true, _) => {
-                return Err(format!("Variable {name} is not initialized"));
+                Err(format!("Variable {name} is not initialized"))
             }
             (false, Some(expr)) => {
                 self.check_expression(expr)?;
@@ -101,9 +100,9 @@ impl<'a> BorrowChecker<'a> {
                 Ok(())
             }
             (false, None) => {
-                return Err(format!(
+                Err(format!(
                     "Variable {name} is declared without an initial value"
-                ));
+                ))
             }
         }
     }
@@ -123,9 +122,9 @@ impl<'a> BorrowChecker<'a> {
 
                 self.insert_borrow(name, BorrowState::ImmutBorrowed);
                 return Ok(());
-            } else {
-                return Err(format!("Error: Variable {ident} is not initialized"));
             }
+
+            return Err(format!("Error: Variable {ident} is not initialized"));
         }
 
         Err(format!("Invalid borrow of {name}"))
@@ -157,9 +156,9 @@ impl<'a> BorrowChecker<'a> {
             for (arg, is_borrowed) in args {
                 if *is_borrowed {
                     self.borrow_imm(arg)?;
-                } else {
-                    self.declare(arg.as_str())?;
-                }
+                } 
+
+                self.declare(arg.as_str())?;
             }
         }
 
@@ -175,16 +174,17 @@ impl<'a> BorrowChecker<'a> {
     fn declare(&mut self, var: &'a str) -> BorrowResult {
         if let Some(scope) = self.borrows.last_mut() {
             if scope.contains_key(var) {
-                Err(format!("Variable {var} is already declared"))
-            } else {
-                scope.insert(var, BorrowState::Uninitialized);
-                Ok(())
-            }
-        } else {
-            Err(format!(
-                "No scope available for declaration of variable for {var}"
-            ))
+                return Err(format!("Variable {var} is already declared"));
+            } 
+
+            scope.insert(var, BorrowState::Uninitialized);
+
+            return Ok(());
         }
+
+        Err(format!(
+            "No scope available for declaration of variable for {var}"
+        ))
     }
     /// `check_function_call` checks a function call.
     ///

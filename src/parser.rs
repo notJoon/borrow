@@ -66,12 +66,7 @@ impl<'a> Parser<'a> {
         self.expect(TokenType::Let, "Expected 'let'");
 
         let name = self.expect_identifier("Expected variable name");
-        let value = if let Some(TokenType::Equals) = self.peek() {
-            self.advance();
-            Some(self.expression())
-        } else {
-            None
-        };
+        let value = self.get_variable_value();
 
         let is_borrowed = matches!(value, Some(Expression::Reference(_)));
 
@@ -82,6 +77,15 @@ impl<'a> Parser<'a> {
             value,
             is_borrowed,
         }
+    }
+
+    fn get_variable_value(&mut self) -> Option<Expression> {
+        if let Some(TokenType::Equals) = self.peek() {
+            self.advance();
+            return Some(self.expression());
+        }
+
+        None
     }
 
     /// Parse the definition of a function.
@@ -293,11 +297,11 @@ impl<'a> Parser<'a> {
 
     /// `peek` method is used to get the current token without moving the parser forward.
     fn peek(&self) -> Option<&TokenType> {
-        if self.is_at_end() {
-            None
-        } else {
-            Some(&self.tokens[self.pos])
+        if !self.is_at_end() {
+            return Some(&self.tokens[self.pos]);
         }
+
+        None
     }
 
     /// `expect` method is used to check if the current token is the expected token.
