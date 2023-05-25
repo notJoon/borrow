@@ -84,13 +84,30 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse the definition of a function.
     fn function_definition(&mut self) -> Statement {
-        self.expect(TokenType::Fn, "Expected 'function'");
+        self.expect(TokenType::Fn, "Expected 'function' keyword");
 
         let name = self.expect_identifier("Expected function name");
-        self.expect(TokenType::OpenParen, "Expected '( 1'");
+        self.expect(TokenType::OpenParen, "Expected '('");
 
-        // store the function arguments in a vector
+        let args = self.parse_function_arguments();
+
+        self.expect(TokenType::CloseParen, "Expected ')'");
+
+        let body = self.parse_function_body();
+
+        Statement::FunctionDef {
+            name,
+            args: if args.is_empty() { None } else { Some(args) },
+            body,
+        }
+    }
+
+    /// Parse the function arguments.
+    ///
+    /// returns a vector of tuples containing the name of the argument and reference status.
+    fn parse_function_arguments(&mut self) -> Vec<(String, bool)> {
         let mut args = Vec::new();
 
         while let Some(token) = self.peek() {
@@ -98,33 +115,54 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            args.push(self.expect_identifier("Expected argument name"));
+            let is_ref = self.parse_argument_reference();
 
-            // continue processing arguments if there are multiple arguments
+            let arg_name = self.expect_identifier("Expected argument name in function definition");
+
+            if self.is_shadowing(&args, &arg_name) {
+                panic!("Argument '{arg_name}' is already defined");
+            }
+
+            args.push((arg_name, is_ref));
+
+            // consume comma, if there are multiple arguments
             if let Some(TokenType::Comma) = self.peek() {
                 self.advance();
             }
         }
 
-        self.expect(TokenType::CloseParen, "Expected ')'");
+        args
+    }
 
-        // process the body of the function, which is a scope
-        let body = match self.scope() {
+    /// Pase an argument reference, consumes the `&` token if exists.
+    ///
+    /// returns the reference status of the argument.
+    fn parse_argument_reference(&mut self) -> bool {
+        let is_ref = matches!(self.peek(), Some(TokenType::Ampersand));
+
+        if is_ref {
+            self.advance();
+        }
+
+        is_ref
+    }
+
+    fn parse_function_body(&mut self) -> Vec<Statement> {
+        match self.scope() {
             Statement::Scope(stmts) => stmts,
             _ => panic!("Expected function body"),
-        };
-
-        Statement::FunctionDef {
-            name,
-            args: Some(args),
-            body,
         }
+    }
+
+    /// checks if te argument name already exists in the list of arguments.
+    fn is_shadowing(&mut self, args: &[(String, bool)], arg_name: &str) -> bool {
+        args.iter().any(|(name, _)| name == arg_name)
     }
 
     /// `function_call` method handles function calls.
     fn function_call(&mut self) -> Statement {
         let name = self.expect_identifier("Expected function name");
-        self.expect(TokenType::OpenParen, "Expected '( 2'");
+        self.expect(TokenType::OpenParen, "Expected '('");
 
         let mut args = Vec::new();
         while let Some(token) = self.peek() {
@@ -340,14 +378,32 @@ mod parser_test {
             stmts,
             vec![Statement::FunctionDef {
                 name: "foo".to_string(),
-                args: Some(Vec::new()),
-                body: Vec::new(),
+                args: None,
+                body: vec![],
             }]
         );
     }
 
     #[test]
-    fn test_function_declaration_multiple_params() {
+    fn test_function_definition_with_ref_arg() {
+        let input = r#"function foo(&x) {}"#;
+        let tokens = setup(input);
+
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![Statement::FunctionDef {
+                name: "foo".to_string(),
+                args: Some(vec![("x".to_string(), true)]),
+                body: vec![],
+            }]
+        );
+    }
+
+    #[test]
+    fn test_function_declaration_multiple_params_with_no_ref_parameter() {
         let input = r#"function foo(x, y, z) {}"#;
         let tokens = setup(input);
 
@@ -358,7 +414,33 @@ mod parser_test {
             stmts,
             vec![Statement::FunctionDef {
                 name: "foo".to_string(),
-                args: Some(vec!["x".to_string(), "y".to_string(), "z".to_string()]),
+                args: Some(vec![
+                    ("x".to_string(), false),
+                    ("y".to_string(), false),
+                    ("z".to_string(), false),
+                ]),
+                body: Vec::new(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_function_declaration_multiple_params_with_ref_parameter() {
+        let input = r#"function foo(x, y, &z) {}"#;
+        let tokens = setup(input);
+
+        let mut parser = Parser::new(&tokens);
+        let stmts = parser.parse();
+
+        assert_eq!(
+            stmts,
+            vec![Statement::FunctionDef {
+                name: "foo".to_string(),
+                args: Some(vec![
+                    ("x".to_string(), false),
+                    ("y".to_string(), false),
+                    ("z".to_string(), true),
+                ]),
                 body: Vec::new(),
             }]
         );
@@ -376,7 +458,7 @@ mod parser_test {
             stmts,
             vec![Statement::FunctionDef {
                 name: "foo".to_string(),
-                args: Some(Vec::new()),
+                args: None,
                 body: vec![Statement::VariableDecl {
                     name: "x".to_string(),
                     value: Some(Expression::Number(10)),
@@ -397,14 +479,18 @@ mod parser_test {
 
         let tokens = setup(input);
         let mut parser = Parser::new(&tokens);
-        
+
         let stmts = parser.parse();
 
         assert_eq!(
             stmts,
             vec![Statement::FunctionDef {
                 name: "foo".to_string(),
-                args: Some(vec!["x".to_string(), "y".to_string(), "z".to_string()]),
+                args: Some(vec![
+                    ("x".to_string(), false),
+                    ("y".to_string(), false),
+                    ("z".to_string(), false)
+                ]),
                 body: vec![
                     Statement::VariableDecl {
                         name: "a".to_string(),
@@ -440,7 +526,7 @@ mod parser_test {
             stmts,
             vec![Statement::FunctionDef {
                 name: "foo".to_string(),
-                args: Some(vec!["x".to_string()]),
+                args: Some(vec![("x".to_string(), false),]),
                 body: vec![
                     Statement::VariableDecl {
                         name: "a".to_string(),
@@ -545,9 +631,9 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![
-                Statement::VariableDecl { 
-                    name: "a".to_string(), 
-                    value: Some(Expression::Number(10)), 
+                Statement::VariableDecl {
+                    name: "a".to_string(),
+                    value: Some(Expression::Number(10)),
                     is_borrowed: false,
                 },
                 Statement::VariableDecl {
@@ -555,9 +641,9 @@ mod parser_test {
                     value: Some(Expression::Reference("a".to_string())),
                     is_borrowed: true,
                 },
-                Statement::VariableDecl { 
-                    name: "c".to_string(), 
-                    value: Some(Expression::Reference("b".to_string())), 
+                Statement::VariableDecl {
+                    name: "c".to_string(),
+                    value: Some(Expression::Reference("b".to_string())),
                     is_borrowed: true,
                 },
             ]
@@ -689,35 +775,6 @@ mod parser_test {
                 }
             }
             _ => panic!("Expected variable declaration"),
-        }
-    }
-
-    #[test]
-    fn parse_function_definition_with_reference_argument() {
-        // fn foo(&bar) {}
-        let tokens = vec![
-            TokenType::Fn,
-            TokenType::Ident("foo".to_string()),
-            TokenType::OpenParen,
-            TokenType::Ampersand,
-            TokenType::Ident("bar".to_string()),
-            TokenType::CloseParen,
-            TokenType::OpenBrace,
-            TokenType::CloseBrace,
-        ];
-
-        let mut parser = Parser::new(&tokens);
-        let statements = parser.parse();
-
-        assert_eq!(statements.len(), 1);
-        match &statements[0] {
-            Statement::FunctionDef { name, args, .. } => {
-                assert_eq!(name, "foo");
-                assert!(args.is_some());
-                assert_eq!(args.as_ref().unwrap().len(), 1);
-                assert_eq!(args.as_ref().unwrap()[0], "&bar");
-            }
-            _ => panic!("Expected function definition"),
         }
     }
 
