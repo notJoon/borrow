@@ -6,7 +6,7 @@ pub enum Statement {
     /// and the body of the function as a vector of statements.
     FunctionDef {
         name: String,
-        args: Option<Vec<String>>,
+        args: Option<Vec<(String, bool)>>,
         body: Vec<Statement>,
     },
     /// Represents a variable declaration.
