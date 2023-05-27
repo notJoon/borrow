@@ -790,13 +790,11 @@ mod parser_test {
 
         assert_eq!(
             parser.parse(),
-            vec![
-                Statement::FunctionDef {
-                    name: "foo".to_string(),
-                    args: None,
-                    body: vec![Statement::Return(Some(Expression::Number(5)))],
-                }
-            ]
+            vec![Statement::FunctionDef {
+                name: "foo".to_string(),
+                args: None,
+                body: vec![Statement::Return(Some(Expression::Number(5)))],
+            }]
         )
     }
 

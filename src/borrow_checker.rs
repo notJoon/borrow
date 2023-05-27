@@ -91,20 +91,16 @@ impl<'a> BorrowChecker<'a> {
 
                 Err(format!("Cannot borrow {ident} because it is not defined"))
             }
-            (true, _) => {
-                Err(format!("Variable {name} is not initialized"))
-            }
+            (true, _) => Err(format!("Variable {name} is not initialized")),
             (false, Some(expr)) => {
                 self.check_expression(expr)?;
                 self.insert_borrow(name, BorrowState::Initialized);
 
                 Ok(())
             }
-            (false, None) => {
-                Err(format!(
-                    "Variable {name} is declared without an initial value"
-                ))
-            }
+            (false, None) => Err(format!(
+                "Variable {name} is declared without an initial value"
+            )),
         }
     }
 
@@ -157,7 +153,7 @@ impl<'a> BorrowChecker<'a> {
             for (arg, is_borrowed) in args {
                 if *is_borrowed {
                     self.borrow_imm(arg)?;
-                } 
+                }
 
                 self.declare(arg.as_str())?;
             }
@@ -176,7 +172,7 @@ impl<'a> BorrowChecker<'a> {
         if let Some(scope) = self.borrows.last_mut() {
             if scope.contains_key(var) {
                 return Err(format!("Variable {var} is already declared"));
-            } 
+            }
 
             scope.insert(var, BorrowState::Uninitialized);
 
