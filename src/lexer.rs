@@ -91,6 +91,7 @@ impl<'a> Lexer<'a> {
         match value.as_str() {
             "let" => TokenType::Let,
             "function" => TokenType::Fn,
+            "return" => TokenType::Return,
             _ => TokenType::Ident(value),
         }
     }
@@ -170,5 +171,19 @@ mod lexer_tests {
         let mut lexer = Lexer::new(input);
 
         while let Some(_) = lexer.next_token() {}
+    }
+
+    #[test]
+    fn test_return_keyword() {
+        let input = r#"return 5;"#;
+
+        let mut lexer = Lexer::new(input);
+
+        assert_tokens!(
+            lexer,
+            TokenType::Return,
+            TokenType::Number(5),
+            TokenType::Semicolon
+        );
     }
 }

@@ -30,6 +30,8 @@ pub enum Statement {
     /// Contains a vector of statements representing the
     /// statements enclosed within the scope.
     Scope(Vec<Statement>),
+    /// Represents a return statement.
+    Return(Option<Expression>),
 }
 
 /// A binary operator.

@@ -2,6 +2,7 @@
 pub enum TokenType {
     Let,
     Fn,
+    Return,
     Ident(String),
     Equals,
     Number(i32),

@@ -56,6 +56,7 @@ impl<'a> Parser<'a> {
         match self.peek() {
             Some(TokenType::Fn) => self.function_definition(),
             Some(TokenType::Let) => self.variable_declaration(),
+            Some(TokenType::Return) => self.return_statement(),
             Some(TokenType::Ident(_)) => self.function_call(),
             Some(TokenType::OpenBrace) => self.scope(),
             _ => panic!("Unexpected token: {:?}", self.peek()),
@@ -186,6 +187,20 @@ impl<'a> Parser<'a> {
         self.expect(TokenType::Semicolon, "Expected ';'");
 
         Statement::FunctionCall { name, args }
+    }
+
+    fn return_statement(&mut self) -> Statement {
+        self.expect(TokenType::Return, "Expected 'return'");
+
+        let expr = if let Some(TokenType::Semicolon) = self.peek() {
+            None
+        } else {
+            Some(self.expression())
+        };
+
+        self.expect(TokenType::Semicolon, "Expected ';'");
+
+        Statement::Return(expr)
     }
 
     /// `scope` method handles scopes.
@@ -745,6 +760,42 @@ mod parser_test {
                     }),
                     is_borrowed: false,
                 },
+            ]
+        )
+    }
+
+    #[test]
+    fn test_parse_return_statement() {
+        let input = r#"return 5;"#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+
+        assert_eq!(
+            parser.parse(),
+            vec![Statement::Return(Some(Expression::Number(5)))]
+        )
+    }
+
+    #[test]
+    fn test_return_in_function_body() {
+        let input = r#"
+            function foo() {
+                return 5;
+            }
+        "#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+
+        assert_eq!(
+            parser.parse(),
+            vec![
+                Statement::FunctionDef {
+                    name: "foo".to_string(),
+                    args: None,
+                    body: vec![Statement::Return(Some(Expression::Number(5)))],
+                }
             ]
         )
     }
