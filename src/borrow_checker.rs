@@ -53,6 +53,7 @@ impl<'a> BorrowChecker<'a> {
             }
             Statement::FunctionCall { name, args } => self.check_function_call(name, args),
             Statement::Scope(stmts) => self.check_scope(stmts),
+            Statement::Return(expr) => self.check_return(expr),
         }
     }
     /// `check_variable_decl` method checks a variable declaration, like `let x = 5;` or `let b = &a`.
@@ -254,6 +255,14 @@ impl<'a> BorrowChecker<'a> {
             }
 
             _ => {}
+        }
+
+        Ok(())
+    }
+
+    fn check_return(&mut self, expr: &'a Option<Expression>) -> BorrowResult {
+        if let Some(expression) = expr {
+            return self.check_expression(expression);
         }
 
         Ok(())
