@@ -41,13 +41,21 @@ impl<'a> Parser<'a> {
             Some(TokenType::Let) => self.variable_declaration(),
             Some(TokenType::Return) => self.return_statement(),
             Some(TokenType::Ident(_)) => {
+                // Check if we have an identifier followed by an opening parenthesis. If so, treat it as a function call.
                 if let Some(TokenType::OpenParen) = self.peek_next() {
-                    let fc = self.function_call();
+                    let name = if let Some(TokenType::Ident(ident)) = self.peek() {
+                        ident.clone()
+                    } else {
+                        panic!("Expected identifier");
+                    };
+    
+                    self.advance(); // Consume the identifier
+                    let fc = self.function_call(Some(&TokenType::Ident(name)));
                     self.expect(TokenType::Semicolon, "Expected ';'");
-
+    
                     return Statement::Expr(fc);
                 }
-
+    
                 // handle as variable
                 self.variable_declaration()
             },
@@ -164,21 +172,25 @@ impl<'a> Parser<'a> {
     }
 
     /// `function_call` method handles function calls.
-    fn function_call(&mut self) -> Expression {
-        let name = self.expect_identifier("Expected function name");
+    fn function_call(&mut self, token: Option<&TokenType>) -> Expression {
+        let name = match token {
+            Some(TokenType::Ident(name)) => name.clone(),
+            _ => self.expect_identifier("Expected function name. got '{token:?}' instead."),
+        };
         self.expect(TokenType::OpenParen, "Expected '('");
 
         let mut args = Vec::new();
-        while let Some(token) = self.peek() {
-            if matches!(token, TokenType::CloseParen) {
-                break;
-            }
 
-            args.push(self.expression());
-
-            // consume comma, if there are multiple arguments
-            if let Some(TokenType::Comma) = self.peek() {
-                self.advance();
+        if let Some(peek) = self.peek() {
+            if peek != &TokenType::CloseParen {
+                loop {
+                    args.push(self.expression());
+                    match self.peek() {
+                        Some(TokenType::Comma) => { self.advance(); }
+                        Some(TokenType::CloseParen) => break,
+                        _ => panic!("Expected ',' or ')'")
+                    }
+                }
             }
         }
 
@@ -247,15 +259,6 @@ impl<'a> Parser<'a> {
                         rhs: Box::new(right),
                     };
                 }
-                TokenType::Ident(_) => {
-                    // If the next token after the identifier is an open parenthesis,
-                    // parse this as a function call. Otherwise, parse it as a variable.
-                    if let Some(TokenType::OpenParen) = self.peek_next() {
-                        self.function_call();
-                    } 
-
-                    self.identifier();
-                }
                 _ => break,
             }
         }
@@ -276,41 +279,39 @@ impl<'a> Parser<'a> {
     }
 
     fn primary(& mut self) -> Expression {
-        let next_token = self.peek().cloned();
-
-        match next_token {
+        match self.peek().cloned() {
             Some(TokenType::Ident(_)) => {
+                let token = self.peek().cloned();
+    
                 self.advance();     // consume the identifier
-
+    
                 if let Some(TokenType::OpenParen) = self.peek() {
                     self.advance();     // consume the open parenthesis
-
-                    return self.function_call();
+    
+                    return self.function_call(token.as_ref());
                 }
-
-                let token = self.advance();
-
-                // handle identifier
+    
                 match token {
-                    Some(TokenType::Ident(name)) => Expression::Ident(name.clone()),
-                    _ => panic!("Unexpected token: {token:?}"),
+                    Some(TokenType::Ident(name)) => Expression::Ident(name),
+                    _ => panic!("Unexpected token: {:?}", token),
                 }
             }
-            Some(TokenType::Number(value)) => {
+            Some(TokenType::Number(val)) => {
                 self.advance();     // consume the number
-
-                Expression::Number(value)
+    
+                Expression::Number(val)
             }
             Some(TokenType::Ampersand) => {
                 self.advance();     // consume the `&` token
-
+    
                 let name = self.expect_identifier("Expected identifier");
-
+    
                 Expression::Reference(name)
             }
-            _ => panic!("Unexpected token: {next_token:?}"),
+            _ => panic!("Unexpected token: {:?}", self.peek())
         }
     }
+    
 
     /// `identifier` method is used to parse an identifier.
     fn identifier(&mut self) -> Expression {
