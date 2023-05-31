@@ -20,11 +20,6 @@ pub enum Statement {
         value: Option<Expression>,
         is_borrowed: bool,
     },
-    /// Represents a function call.
-    ///
-    /// Contains the name of the function and the arguments
-    /// passed to the function as a vector of expressions.
-    FunctionCall { name: String, args: Vec<Expression> },
     /// Represents a scope or block of statements.
     ///
     /// Contains a vector of statements representing the
@@ -32,6 +27,8 @@ pub enum Statement {
     Scope(Vec<Statement>),
     /// Represents a return statement.
     Return(Option<Expression>),
+    /// Wrapping expressions that can be standalone statements.
+    Expr(Expression),
 }
 
 /// A binary operator.
@@ -71,4 +68,11 @@ pub enum Expression {
     ///
     /// Contains the name of the referenced variable as a string.
     Reference(String),
+    /// Represents a function call.
+    /// 
+    /// Contains the name of the function and the arguments
+    FunctionCall {
+        name: Box<Expression>,
+        args: Vec<Expression>,
+    }
 }

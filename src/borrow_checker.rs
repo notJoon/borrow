@@ -51,9 +51,9 @@ impl<'a> BorrowChecker<'a> {
             Statement::FunctionDef { name, args, body } => {
                 self.check_function_def(name, args, body)
             }
-            Statement::FunctionCall { name, args } => self.check_function_call(name, args),
             Statement::Scope(stmts) => self.check_scope(stmts),
             Statement::Return(expr) => self.check_return(expr),
+            Statement::Expr(expr) => self.check_expression(expr),
         }
     }
     /// `check_variable_decl` method checks a variable declaration, like `let x = 5;` or `let b = &a`.
