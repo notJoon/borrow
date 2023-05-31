@@ -51,7 +51,8 @@ impl<'a> Parser<'a> {
     
                     self.advance(); // Consume the identifier
                     let fc = self.function_call(Some(&TokenType::Ident(name)));
-                    self.expect(TokenType::Semicolon, "Expected ';'");
+
+                    self.expect(TokenType::Semicolon, "Expected ';'").unwrap();
     
                     return Statement::Expr(fc);
                 }
@@ -65,7 +66,7 @@ impl<'a> Parser<'a> {
     }
 
     fn variable_declaration(&mut self) -> Statement {
-        self.expect(TokenType::Let, "Expected 'let'");
+        self.expect(TokenType::Let, "Expected 'let'").unwrap();
 
         let name = self.expect_identifier("Expected variable name");
 
@@ -74,7 +75,7 @@ impl<'a> Parser<'a> {
 
         let is_borrowed = matches!(value, Some(Expression::Reference(_)));
 
-        self.expect(TokenType::Semicolon, "Expected ';'");
+        self.expect(TokenType::Semicolon, "Expected ';'").unwrap();
 
         Statement::VariableDecl {
             name,
@@ -86,6 +87,7 @@ impl<'a> Parser<'a> {
     fn get_variable_value(&mut self) -> Option<Expression> {
         if let Some(TokenType::Equals) = self.peek() {
             self.advance();
+
             return Some(self.expression());
         }
 
@@ -94,14 +96,14 @@ impl<'a> Parser<'a> {
 
     /// Parse the definition of a function.
     fn function_definition(&mut self) -> Statement {
-        self.expect(TokenType::Fn, "Expected 'function' keyword");
+        self.expect(TokenType::Fn, "Expected 'function' keyword").unwrap();
 
         let name = self.expect_identifier("Expected function name");
-        self.expect(TokenType::OpenParen, "Expected '('");
+        self.expect(TokenType::OpenParen, "Expected '('").unwrap();
 
         let args = self.parse_function_arguments();
 
-        self.expect(TokenType::CloseParen, "Expected ')'");
+        self.expect(TokenType::CloseParen, "Expected ')'").unwrap();
 
         let body = self.parse_function_body();
 
@@ -177,14 +179,21 @@ impl<'a> Parser<'a> {
             Some(TokenType::Ident(name)) => name.clone(),
             _ => self.expect_identifier("Expected function name. got '{token:?}' instead."),
         };
-        self.expect(TokenType::OpenParen, "Expected '('");
+
+        self.expect(TokenType::OpenParen, "Expected '('").unwrap();
 
         let mut args = Vec::new();
 
         if let Some(peek) = self.peek() {
             if peek != &TokenType::CloseParen {
                 loop {
-                    args.push(self.expression());
+                    // args.push(self.expression());
+                    if let Some(expr) = self.maybe_function_call(None) {
+                        args.push(expr);
+                    } else {
+                        args.push(self.expression());
+                    }
+
                     match self.peek() {
                         Some(TokenType::Comma) => { self.advance(); }
                         Some(TokenType::CloseParen) => break,
@@ -194,7 +203,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect(TokenType::CloseParen, "Expected ')'");
+        self.expect(TokenType::CloseParen, "Expected ')'").unwrap();
         // self.expect(TokenType::Semicolon, "Expected ';'");
 
         // [UPDATE: 2023-05-31]
@@ -207,14 +216,23 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn maybe_function_call(&mut self, token: Option<&TokenType>) -> Option<Expression> {
+        if matches!(self.peek(), Some(TokenType::OpenParen)) {
+            // don't consume here, let function_call handle it
+            return Some(self.function_call(token));
+        }
+
+        None
+    }
+
     fn return_statement(&mut self) -> Statement {
-        self.expect(TokenType::Return, "Expected 'return'");
+        self.expect(TokenType::Return, "Expected 'return'").unwrap();
 
         let expr = matches!(self.peek(), Some(TokenType::Semicolon))
             .then(|| None)
             .unwrap_or_else(|| Some(self.expression()));
 
-        self.expect(TokenType::Semicolon, "Expected ';'");
+        self.expect(TokenType::Semicolon, "Expected ';'").unwrap();
 
         Statement::Return(expr)
     }
@@ -223,7 +241,7 @@ impl<'a> Parser<'a> {
     ///
     /// It takes `mut self` as an argument and returns a statement.
     fn scope(&mut self) -> Statement {
-        self.expect(TokenType::OpenBrace, "Expected '{'");
+        self.expect(TokenType::OpenBrace, "Expected '{'").unwrap();
 
         let mut stmts = Vec::new();
 
@@ -236,7 +254,7 @@ impl<'a> Parser<'a> {
             stmts.push(self.statement());
         }
 
-        self.expect(TokenType::CloseBrace, "Expected '}'");
+        self.expect(TokenType::CloseBrace, "Expected '}'").unwrap();
 
         // create a new scope statement with the collected statements.
         Statement::Scope(stmts)
@@ -285,10 +303,8 @@ impl<'a> Parser<'a> {
     
                 self.advance();     // consume the identifier
     
-                if let Some(TokenType::OpenParen) = self.peek() {
-                    self.advance();     // consume the open parenthesis
-    
-                    return self.function_call(token.as_ref());
+                if let Some(expr) = self.maybe_function_call(token.as_ref()) {
+                    return expr;
                 }
     
                 match token {
@@ -364,14 +380,14 @@ impl<'a> Parser<'a> {
     }
 
     /// `expect` method is used to check if the current token is the expected token.
-    fn expect(&mut self, token: TokenType, msg: &str) -> () {
+    fn expect(&mut self, token: TokenType, msg: &str) -> Result<(), String> {
         if Some(&token) != self.peek() {
-            let prev_token = self.peek_prev().unwrap();
-
-            panic!("{msg}, got {prev_token:?} instead of {token:?}");
+            panic!("{msg}, got {token:?} instead");
         }
 
         self.advance();
+
+        Ok(())
     }
 }
 
@@ -652,7 +668,7 @@ mod parser_test {
     }
 
     #[test]
-    fn test_function_call_as_expression() {
+    fn test_adding_number_to_function_without_arguments() {
         let input = r#"let a = foo() + 1;"#;
         let tokens = setup(input);
 
@@ -681,7 +697,7 @@ mod parser_test {
     }
 
     #[test]
-    fn test_function_call_as_expression_with_param() {
+    fn test_adding_number_to_function_with_single_argument() {
         let input = r#"let a = foo(5) + 1;"#;
 
         let tokens = setup(input);
@@ -713,8 +729,8 @@ mod parser_test {
     }
 
     #[test]
-    fn test_function_call_as_expression_add_two_functions() {
-        let input = r#"let a = foo(3, 4) + bar(5)"#;
+    fn test_adding_two_functions_with_arguments() {
+        let input = r#"let a = foo(3, 4) + bar(5);"#;
 
         let tokens = setup(input);
 

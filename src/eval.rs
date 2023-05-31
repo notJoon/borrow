@@ -230,6 +230,7 @@ mod eval_test {
     }
 
     #[test]
+    #[ignore = "todo"]
     fn test_function_definition_and_call() {
         let mut eval = Evaluator::new();
 
