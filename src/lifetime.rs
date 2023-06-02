@@ -2,10 +2,16 @@ use std::collections::BTreeMap;
 
 use crate::borrow_checker::BorrowState;
 
+/// A variable in the scope.
+/// 
+/// It makes the `Scope` more flexible rather than directly using `BorrowState`.
 pub struct Variable {
     state: BorrowState,
 }
 
+/// `Scope` is a collection of variables.
+/// 
+/// It is used to track the variables in the current scope.
 pub struct Scope<'a> {
     variables: BTreeMap<&'a str, Variable>,
 }
@@ -16,6 +22,14 @@ impl Variable {
         Ok(Self {
             state: BorrowState::Uninitialized,
         })
+    }
+
+    pub fn get_state(&self) -> &BorrowState {
+        &self.state
+    }
+
+    pub fn set_state(&mut self, state: BorrowState) {
+        self.state = state;
     }
 }
 
@@ -37,6 +51,18 @@ impl<'a> Scope<'a> {
         let variable = Variable { state };
 
         self.variables.insert(var, variable);
+    }
+
+    pub fn get_state(&self, var: &'a str) -> Option<&BorrowState> {
+        self.variables
+            .get(var)
+            .map(|v| v.get_state())
+    }
+
+    pub fn set_state(&mut self, var: &'a str, state: BorrowState) {
+        if let Some(variable) = self.variables.get_mut(var) {
+            variable.set_state(state);
+        }
     }
 
     /// Compute the borrowed variables in the scope
