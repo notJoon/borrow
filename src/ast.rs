@@ -69,10 +69,10 @@ pub enum Expression {
     /// Contains the name of the referenced variable as a string.
     Reference(String),
     /// Represents a function call.
-    /// 
+    ///
     /// Contains the name of the function and the arguments
     FunctionCall {
         name: Box<Expression>,
         args: Vec<Expression>,
-    }
+    },
 }

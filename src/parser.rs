@@ -48,18 +48,18 @@ impl<'a> Parser<'a> {
                     } else {
                         panic!("Expected identifier");
                     };
-    
+
                     self.advance(); // Consume the identifier
                     let fc = self.function_call(Some(&TokenType::Ident(name)));
 
                     self.expect(TokenType::Semicolon, "Expected ';'").unwrap();
-    
+
                     return Statement::Expr(fc);
                 }
-    
+
                 // handle as variable
                 self.variable_declaration()
-            },
+            }
             Some(TokenType::OpenBrace) => self.scope(),
             _ => panic!("Unexpected token: {:?}", self.peek()),
         }
@@ -96,7 +96,8 @@ impl<'a> Parser<'a> {
 
     /// Parse the definition of a function.
     fn function_definition(&mut self) -> Statement {
-        self.expect(TokenType::Fn, "Expected 'function' keyword").unwrap();
+        self.expect(TokenType::Fn, "Expected 'function' keyword")
+            .unwrap();
 
         let name = self.expect_identifier("Expected function name");
         self.expect(TokenType::OpenParen, "Expected '('").unwrap();
@@ -195,9 +196,11 @@ impl<'a> Parser<'a> {
                     }
 
                     match self.peek() {
-                        Some(TokenType::Comma) => { self.advance(); }
+                        Some(TokenType::Comma) => {
+                            self.advance();
+                        }
                         Some(TokenType::CloseParen) => break,
-                        _ => panic!("Expected ',' or ')'")
+                        _ => panic!("Expected ',' or ')'"),
                     }
                 }
             }
@@ -207,12 +210,12 @@ impl<'a> Parser<'a> {
         // self.expect(TokenType::Semicolon, "Expected ';'");
 
         // [UPDATE: 2023-05-31]
-        // In the context of expressions, function calls are treated as expressions 
+        // In the context of expressions, function calls are treated as expressions
         // rather than standalone statements because they produce a value.
         // So, we need to return an expression instead of a statement.
-        Expression::FunctionCall { 
-            name: Box::new(Expression::Ident(name)), 
-            args
+        Expression::FunctionCall {
+            name: Box::new(Expression::Ident(name)),
+            args,
         }
     }
 
@@ -296,38 +299,37 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn primary(& mut self) -> Expression {
+    fn primary(&mut self) -> Expression {
         match self.peek().cloned() {
             Some(TokenType::Ident(_)) => {
                 let token = self.peek().cloned();
-    
-                self.advance();     // consume the identifier
-    
+
+                self.advance(); // consume the identifier
+
                 if let Some(expr) = self.maybe_function_call(token.as_ref()) {
                     return expr;
                 }
-    
+
                 match token {
                     Some(TokenType::Ident(name)) => Expression::Ident(name),
                     _ => panic!("Unexpected token: {:?}", token),
                 }
             }
             Some(TokenType::Number(val)) => {
-                self.advance();     // consume the number
-    
+                self.advance(); // consume the number
+
                 Expression::Number(val)
             }
             Some(TokenType::Ampersand) => {
-                self.advance();     // consume the `&` token
-    
+                self.advance(); // consume the `&` token
+
                 let name = self.expect_identifier("Expected identifier");
-    
+
                 Expression::Reference(name)
             }
-            _ => panic!("Unexpected token: {:?}", self.peek())
+            _ => panic!("Unexpected token: {:?}", self.peek()),
         }
     }
-    
 
     /// `identifier` method is used to parse an identifier.
     fn identifier(&mut self) -> Expression {
@@ -345,7 +347,7 @@ impl<'a> Parser<'a> {
             _ => {
                 let prev_token = self.peek_prev().unwrap();
                 panic!("{msg}, got {prev_token:?} instead of identifier")
-            },
+            }
         }
     }
 
@@ -679,20 +681,18 @@ mod parser_test {
 
         assert_eq!(
             stmts,
-            vec![
-                Statement::VariableDecl {
-                    name: "a".to_string(),
-                    value: Some(Expression::BinaryOp {
-                        lhs: Box::new(Expression::FunctionCall {
-                            name: Box::new(Expression::Ident("foo".to_string())),
-                            args: vec![],
-                        }),
-                        op: BinaryOp::Plus,
-                        rhs: Box::new(Expression::Number(1)),
+            vec![Statement::VariableDecl {
+                name: "a".to_string(),
+                value: Some(Expression::BinaryOp {
+                    lhs: Box::new(Expression::FunctionCall {
+                        name: Box::new(Expression::Ident("foo".to_string())),
+                        args: vec![],
                     }),
-                    is_borrowed: false,
-                },
-            ]
+                    op: BinaryOp::Plus,
+                    rhs: Box::new(Expression::Number(1)),
+                }),
+                is_borrowed: false,
+            },]
         )
     }
 
@@ -708,23 +708,20 @@ mod parser_test {
 
         let stmts = parser.parse();
 
-
         assert_eq!(
             stmts,
-            vec![
-                Statement::VariableDecl {
-                    name: "a".to_string(),
-                    value: Some(Expression::BinaryOp {
-                        lhs: Box::new(Expression::FunctionCall {
-                            name: Box::new(Expression::Ident("foo".to_string())),
-                            args: vec![Expression::Number(5)],
-                        }),
-                        op: BinaryOp::Plus,
-                        rhs: Box::new(Expression::Number(1)),
+            vec![Statement::VariableDecl {
+                name: "a".to_string(),
+                value: Some(Expression::BinaryOp {
+                    lhs: Box::new(Expression::FunctionCall {
+                        name: Box::new(Expression::Ident("foo".to_string())),
+                        args: vec![Expression::Number(5)],
                     }),
-                    is_borrowed: false,
-                },
-            ]
+                    op: BinaryOp::Plus,
+                    rhs: Box::new(Expression::Number(1)),
+                }),
+                is_borrowed: false,
+            },]
         )
     }
 
@@ -739,23 +736,21 @@ mod parser_test {
 
         assert_eq!(
             stmts,
-            vec![
-                Statement::VariableDecl {
-                    name: "a".to_string(),
-                    value: Some(Expression::BinaryOp {
-                        lhs: Box::new(Expression::FunctionCall {
-                            name: Box::new(Expression::Ident("foo".to_string())),
-                            args: vec![Expression::Number(3), Expression::Number(4)],
-                        }),
-                        op: BinaryOp::Plus,
-                        rhs: Box::new(Expression::FunctionCall {
-                            name: Box::new(Expression::Ident("bar".to_string())),
-                            args: vec![Expression::Number(5)],
-                        }),
+            vec![Statement::VariableDecl {
+                name: "a".to_string(),
+                value: Some(Expression::BinaryOp {
+                    lhs: Box::new(Expression::FunctionCall {
+                        name: Box::new(Expression::Ident("foo".to_string())),
+                        args: vec![Expression::Number(3), Expression::Number(4)],
                     }),
-                    is_borrowed: false,
-                },
-            ]
+                    op: BinaryOp::Plus,
+                    rhs: Box::new(Expression::FunctionCall {
+                        name: Box::new(Expression::Ident("bar".to_string())),
+                        args: vec![Expression::Number(5)],
+                    }),
+                }),
+                is_borrowed: false,
+            },]
         )
     }
 

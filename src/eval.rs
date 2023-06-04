@@ -30,7 +30,7 @@ impl<'a> Evaluator<'a> {
     /// and evaluates each statement in turn.
     ///
     /// It returns the value of the last statement if exists.
-    pub fn evaluate(&mut self, stmts: &'a[Statement]) -> Result<Option<i32>, String> {
+    pub fn evaluate(&mut self, stmts: &'a [Statement]) -> Result<Option<i32>, String> {
         for stmt in stmts {
             self.evaluate_stmt(stmt)?;
         }
@@ -55,7 +55,8 @@ impl<'a> Evaluator<'a> {
                 Ok(None)
             }
             Statement::FunctionDef { name, args, body } => {
-                self.functions.insert(name.clone(), (args.clone().unwrap(), body));
+                self.functions
+                    .insert(name.clone(), (args.clone().unwrap(), body));
 
                 Ok(None)
             }
@@ -75,7 +76,7 @@ impl<'a> Evaluator<'a> {
             Statement::Return(expr) => {
                 let value = match expr {
                     Some(expr) => self.evaluate_expr(expr)?,
-                    None => 0
+                    None => 0,
                 };
 
                 Err(format!("return value: {:?}", value))
@@ -125,17 +126,28 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn evaluate_function_call(&mut self, name: &String, args: &'a [Expression]) -> Result<Option<i32>, String> {
+    fn evaluate_function_call(
+        &mut self,
+        name: &String,
+        args: &'a [Expression],
+    ) -> Result<Option<i32>, String> {
         if let Some((params, body)) = self.functions.get(name) {
             if params.len() != args.len() {
-                return Err(format!("Wrong number of arguments for function {name}, expected {}, got {}", params.len(), args.len()));
+                return Err(format!(
+                    "Wrong number of arguments for function {name}, expected {}, got {}",
+                    params.len(),
+                    args.len()
+                ));
             }
 
             self.local_env.push(HashMap::new());
 
             for ((param_name, _), arg) in params.iter().zip(args) {
                 let arg_value = self.evaluate_expr(arg)?;
-                self.local_env.last_mut().unwrap().insert(param_name.clone(), arg_value);
+                self.local_env
+                    .last_mut()
+                    .unwrap()
+                    .insert(param_name.clone(), arg_value);
             }
 
             let mut ret_result = None;
@@ -166,7 +178,7 @@ impl<'a> Evaluator<'a> {
 #[cfg(test)]
 mod eval_test {
     use super::*;
-    use crate::{lexer::Lexer, token::TokenType, parser::Parser};
+    use crate::{lexer::Lexer, parser::Parser, token::TokenType};
 
     fn setup(input: &str) -> Vec<TokenType> {
         let mut lexer = Lexer::new(input);
