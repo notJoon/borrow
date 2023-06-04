@@ -42,23 +42,15 @@ impl Variable {
     pub fn set_state(&mut self, state: BorrowState) {
         self.state = state;
     }
-
-    pub fn get_scope_id(&self) -> usize {
-        self.scope_id
-    }
-
-    pub fn set_scope_id(&mut self, scope_id: usize) {
-        self.scope_id = scope_id;
-    }
 }
 
 impl<'a> Scope<'a> {
     /// Creates a new `scope` instance.
-    pub fn new() -> Self {
+    pub fn new(parent: Option<&'a Scope<'a>>) -> Self {
         Self {
             id: next_scope_id(),
             variables: BTreeMap::new(),
-            parent: None,
+            parent: parent,
         }
     }
 
@@ -68,14 +60,8 @@ impl<'a> Scope<'a> {
     }
 
     /// Insert a variable and borrow state into the scope.
-    pub fn insert(&mut self, var: &'a str, state: BorrowState) -> Result<(), LifetimeError> {
-        if self.contains_val(var) {
-            return Err(LifetimeError::VariableAlreadyExists(var.to_string()));
-        }
-
+    pub fn insert(&mut self, var: &'a str, state: BorrowState) {
         self.variables.insert(var, Variable::new(state, self.id));
-
-        Ok(())
     }
 
     pub fn get_state(&self, var: &'a str) -> Option<&BorrowState> {
@@ -91,8 +77,18 @@ impl<'a> Scope<'a> {
     pub fn check_lifetime(&self, var: &'a str, borrow_id: usize) -> Result<(), LifetimeError> {
         let variable = self.get_variable(var)?;
 
+        if let BorrowState::Uninitialized = variable.state {
+            return Ok(());
+        }
+
         if borrow_id < variable.scope_id {
             return Err(LifetimeError::LifetimeTooShort(var.to_string()));
+        }
+
+        if let Some(parent) = self.parent {
+            if parent.check_lifetime(var, borrow_id).is_err() {
+                return Err(LifetimeError::LifetimeTooShort(var.to_string()));
+            }
         }
 
         Ok(())
@@ -127,35 +123,61 @@ mod lifetime_test {
     use super::*;
 
     #[test]
-    fn test_variable_lifetime() {
-        let mut scope = Scope::new();
-        scope.insert("x", BorrowState::Uninitialized).unwrap();
-        assert!(scope.check_lifetime("x", scope.id).is_ok());
+    fn test_variable_state() {
+        let mut variable = Variable::new(BorrowState::Uninitialized, 0);
+        assert_eq!(variable.get_state(), &BorrowState::Uninitialized);
 
-        let mut inner_scope = Scope::new();
-        inner_scope.parent = Some(&scope);
-        assert!(inner_scope.check_lifetime("x", inner_scope.id).is_ok());
+        variable.set_state(BorrowState::Borrowed);
+        assert_eq!(variable.get_state(), &BorrowState::Borrowed);
     }
 
     #[test]
-    fn test_borrow_lifetime() {
-        let mut scope = Scope::new();
-        scope.insert("x", BorrowState::Uninitialized).unwrap();
-        assert!(scope.check_borrow_rules("x").is_ok());
+    fn test_scope_insert_and_get_state() {
+        let mut scope = Scope::new(None);
 
-        let mut inner_scope = Scope::new();
-        inner_scope.parent = Some(&scope);
-        inner_scope.insert("x", BorrowState::Borrowed).unwrap();
-        assert!(inner_scope.check_borrow_rules("x").is_err());
+        scope.insert("x", BorrowState::Uninitialized);
+        scope.insert("y", BorrowState::Uninitialized);
+
+        assert_eq!(scope.get_state("x"), Some(&BorrowState::Uninitialized));
+        assert_eq!(scope.get_state("y"), Some(&BorrowState::Uninitialized));
+        assert_eq!(scope.get_state("z"), None);
     }
 
     #[test]
-    fn test_borrow_rules() {
-        let mut scope = Scope::new();
-        assert!(scope.insert("x", BorrowState::Borrowed).is_ok());
-        assert!(scope.check_borrow_rules("x").is_err());
+    fn test_scope_set_state() {
+        let mut scope = Scope::new(None);
+        scope.insert("x", BorrowState::Uninitialized);
 
-        scope.set_state("x", BorrowState::Uninitialized);
-        assert!(scope.check_borrow_rules("x").is_ok());
+        scope.set_state("x", BorrowState::Borrowed);
+        assert_eq!(scope.get_state("x"), Some(&BorrowState::Borrowed));
+
+        scope.set_state("y", BorrowState::Borrowed);
+        assert_eq!(scope.get_state("y"), None);
+    }
+
+    #[test]
+    // FIXME 
+    fn test_scope_check_lifetime() {
+        let parent = Scope::new(None);
+        let mut scope = Scope::new(Some(&parent));
+
+        scope.insert("x", BorrowState::Uninitialized);   
+
+        assert_eq!(scope.check_lifetime("x", 0), Ok(()));
+        assert_eq!(scope.check_lifetime("x", 1), Err(LifetimeError::LifetimeTooShort("x".to_string())));
+    }
+
+    #[test]
+    fn test_scope_check_borrow_rule() {
+        let mut scope = Scope::new(None);
+        scope.insert("x", BorrowState::Uninitialized);
+
+        assert_eq!(scope.check_borrow_rules("x"), Ok(()));
+
+        scope.set_state("x", BorrowState::Borrowed);
+        assert_eq!(
+            scope.check_borrow_rules("x"), 
+            Err(LifetimeError::BorrowedMutable("x".to_string())
+        ));
     }
 }
