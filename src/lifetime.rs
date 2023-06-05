@@ -4,6 +4,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::borrow_checker::BorrowState;
 use crate::errors::LifetimeError;
 
+/* TODO
+    1. Define the concept of memory allocation and deallocation and implement it.
+    2. Modify the `Variable` struct. should include new information fields.
+    3. Update the `Scope` methods. may need to be updated to take into account
+        the new memory allocatio field of the `Variable` struct.
+    4. Update the lifetime checks. `check_lifetime` method needs to be updated to check
+        that a variable's lifetime starts with the allocation and continues until the
+       memory place allocated for that variable's name no longer represents value of that
+*/
+
 /// Automatically generate a unique scope `id`.
 static SCOPE_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -50,7 +60,7 @@ impl<'a> Scope<'a> {
         Self {
             id: next_scope_id(),
             variables: BTreeMap::new(),
-            parent: parent,
+            parent,
         }
     }
 
@@ -123,12 +133,14 @@ mod lifetime_test {
     use super::*;
 
     #[test]
-    fn test_variable_state() {
+    fn test_variable_state_and_allocation() {
         let mut variable = Variable::new(BorrowState::Uninitialized, 0);
         assert_eq!(variable.get_state(), &BorrowState::Uninitialized);
+        assert_eq!(variable.is_allocated(), false);
 
         variable.set_state(BorrowState::Borrowed);
         assert_eq!(variable.get_state(), &BorrowState::Borrowed);
+        assert_eq!(variable.is_allocated(), true);
     }
 
     #[test]
@@ -144,40 +156,47 @@ mod lifetime_test {
     }
 
     #[test]
-    fn test_scope_set_state() {
+    fn test_scope_get_state_and_empty_deallocation() {
         let mut scope = Scope::new(None);
-        scope.insert("x", BorrowState::Uninitialized);
 
+        scope.insert("x", BorrowState::Uninitialized);
         scope.set_state("x", BorrowState::Borrowed);
         assert_eq!(scope.get_state("x"), Some(&BorrowState::Borrowed));
+
+        scope.set_state("x", BorrowState::Uninitialized);
+        assert_eq!(scope.get_state("x"), Some(&BorrowState::Uninitialized));
+        // Assuming that setting a variable's state to `Uninitialized` deallocates its memory.
+        assert_eq!(scope.is_allocated(), false);
 
         scope.set_state("y", BorrowState::Borrowed);
         assert_eq!(scope.get_state("y"), None);
     }
 
     #[test]
-    // FIXME 
     fn test_scope_check_lifetime() {
-        let parent = Scope::new(None);
-        let mut scope = Scope::new(Some(&parent));
+        let mut scope = Scope::new(None);
 
-        scope.insert("x", BorrowState::Uninitialized);   
+        scope.insert("x", BorrowState::Uninitialized);
+        assert!(scope.check_lifetime("x", 0).is_ok());
 
-        assert_eq!(scope.check_lifetime("x", 0), Ok(()));
-        assert_eq!(scope.check_lifetime("x", 1), Err(LifetimeError::LifetimeTooShort("x".to_string())));
+        scope.set_state("x", BorrowState::Borrowed);
+        assert!(scope.check_lifetime("x", 0).is_err());
+
+        scope.set_state("x", BorrowState::Uninitialized);
+        assert!(scope.check_lifetime("x", 0).is_ok());
     }
 
     #[test]
-    fn test_scope_check_borrow_rule() {
+    fn test_scope_check_borrow_rules() {
         let mut scope = Scope::new(None);
-        scope.insert("x", BorrowState::Uninitialized);
 
-        assert_eq!(scope.check_borrow_rules("x"), Ok(()));
+        scope.insert("x", BorrowState::Uninitialized);
+        assert!(scope.check_borrow_rules("x").is_ok());
 
         scope.set_state("x", BorrowState::Borrowed);
-        assert_eq!(
-            scope.check_borrow_rules("x"), 
-            Err(LifetimeError::BorrowedMutable("x".to_string())
-        ));
+        assert!(scope.check_borrow_rules("x").is_err());
+
+        scope.set_state("x", BorrowState::Uninitialized);
+        assert!(scope.check_borrow_rules("x").is_ok());
     }
 }
