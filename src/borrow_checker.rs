@@ -416,23 +416,46 @@ mod borrow_tests {
     }
 
     #[test]
-    #[ignore = "todo"]
-    fn test_nested_scope() {
-        let input = r#"
-            function foo(x) {
-                let a = x;
-                {
-                    let b = &a;
-                }
-                let c = &a;
-            }
-        "#;
-
+    fn test_nested_scope_borrow_checking() {
         let mut checker = BorrowChecker::new();
+        let stmts = vec![
+            Statement::VariableDecl {
+                name: "x".to_string(),
+                value: Some(Expression::Number(5)),
+                is_borrowed: false,
+            },
+            Statement::Scope(vec![
+                Statement::VariableDecl {
+                    name: "y".to_string(),
+                    value: Some(Expression::Reference("x".to_string())),
+                    is_borrowed: true,
+                },
+                Statement::Expr(Expression::Ident("y".to_string())),
+            ]),
+            Statement::Expr(Expression::Ident("x".to_string())),
+        ];
 
-        let result = setup(input);
-        let result = checker.check(&result);
+        assert_eq!(checker.check(&stmts), Ok(()));
+    }
 
-        assert_eq!(result, Ok(()));
+    #[test]
+    fn test_nested_scope_with_borrow() {
+        let mut checker = BorrowChecker::new();
+        let stmts = vec![
+            Statement::VariableDecl {
+                name: "x".to_string(),
+                value: Some(Expression::Number(5)),
+                is_borrowed: false,
+            },
+            Statement::Scope(vec![
+                Statement::VariableDecl {
+                    name: "y".to_string(),
+                    value: Some(Expression::Reference("x".to_string())),
+                    is_borrowed: true,
+                },
+                Statement::Expr(Expression::Ident("x".to_string())),
+            ]),
+        ];
+        assert_eq!(checker.check(&stmts), Err("Cannot borrow x as it is currently being mutably borrowed".to_string()));
     }
 }
