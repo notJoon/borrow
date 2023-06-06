@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::ast::{Expression, Statement};
+use crate::{ast::{Expression, Statement}, errors::BorrowError};
 
-type BorrowResult = Result<(), String>;
+type BorrowResult = Result<(), BorrowError>;
 
 /// The `BorrowChecker` struct is used to keep track of the state of borrows.
 pub struct BorrowChecker<'a> {
@@ -71,14 +71,10 @@ impl<'a> BorrowChecker<'a> {
                 if let Some(state) = self.get_borrow(ident) {
                     match state {
                         BorrowState::Borrowed | BorrowState::ImmutBorrowed => {
-                            return Err(format!(
-                                "Cannot borrow {ident} as it is currently being mutably borrowed"
-                            ));
+                            return Err(BorrowError::BorrowedMutable(ident.to_string()));
                         }
                         BorrowState::Uninitialized => {
-                            return Err(format!(
-                                "Variable {ident} is declared without an initial value"
-                            ));
+                            return Err(BorrowError::DeclaredWithoutInitialValue(ident.to_string()));
                         }
                         _ => {}
                     }
@@ -89,18 +85,16 @@ impl<'a> BorrowChecker<'a> {
                     return Ok(());
                 }
 
-                Err(format!("Cannot borrow {ident} because it is not defined"))
+                Err(BorrowError::VariableNotDefined(ident.to_string()))
             }
-            (true, _) => Err(format!("Variable {name} is not initialized")),
+            (true, _) => Err(BorrowError::VariableNotInitialized(name.to_string())),
             (false, Some(expr)) => {
                 self.check_expression(expr)?;
                 self.insert_borrow(name, BorrowState::Initialized);
 
                 Ok(())
             }
-            (false, None) => Err(format!(
-                "Variable {name} is declared without an initial value"
-            )),
+            (false, None) => Err(BorrowError::DeclaredWithoutInitialValue(name.to_string())),
         }
     }
 
@@ -112,19 +106,17 @@ impl<'a> BorrowChecker<'a> {
         if let Some(Expression::Ident(ref ident)) = value {
             if let Some(state) = self.get_borrow(ident) {
                 if state == &BorrowState::Borrowed {
-                    return Err(format!(
-                        "Error: Cannot borrow {ident} as it is currently being mutably borrowed"
-                    ));
+                    return Err(BorrowError::InvalidBorrowMutablyBorrowed(ident.to_string()));
                 }
 
                 self.insert_borrow(name, BorrowState::ImmutBorrowed);
                 return Ok(());
             }
 
-            return Err(format!("Error: Variable {ident} is not initialized"));
+            return Err(BorrowError::VariableNotDefined(ident.to_string()));
         }
 
-        Err(format!("Invalid borrow of {name}"))
+        Err(BorrowError::InvalidBorrow(name.to_string()))
     }
 
     fn check_value_expr(&mut self, value: &'a Option<Expression>) -> BorrowResult {
@@ -171,7 +163,7 @@ impl<'a> BorrowChecker<'a> {
     fn declare(&mut self, var: &'a str) -> BorrowResult {
         if let Some(scope) = self.borrows.last_mut() {
             if scope.contains_key(var) {
-                return Err(format!("Variable {var} is already declared"));
+                return Err(BorrowError::VariableDeclaredDuplicate(var.to_string()));
             }
 
             scope.insert(var, BorrowState::Uninitialized);
@@ -179,9 +171,7 @@ impl<'a> BorrowChecker<'a> {
             return Ok(());
         }
 
-        Err(format!(
-            "No scope available for declaration of variable for {var}"
-        ))
+        Err(BorrowError::NoScopeAvailable(var.to_string()))
     }
     /// `check_function_call` checks a function call.
     ///
@@ -193,9 +183,7 @@ impl<'a> BorrowChecker<'a> {
 
             if let Expression::Ident(ident) = arg {
                 if let Some(BorrowState::Borrowed) = self.get_borrow(ident) {
-                    return Err(format!(
-                        "Cannot borrow {ident} as it is currently being mutably borrowed"
-                    ));
+                    return Err(BorrowError::BorrowedMutable(ident.to_string()));
                 }
             }
         }
@@ -231,9 +219,7 @@ impl<'a> BorrowChecker<'a> {
                 let borrow = self.get_borrow(var);
 
                 if let Some(BorrowState::Borrowed) = borrow {
-                    return Err(format!(
-                        "Cannot borrow {var} as it is currently being mutably borrowed"
-                    ));
+                    return Err(BorrowError::BorrowedMutable(var.to_string()));
                 }
             }
 
@@ -246,7 +232,7 @@ impl<'a> BorrowChecker<'a> {
             // if the expression is an identifier, check if the variable is already borrowed
             Expression::Ident(ident) => {
                 if self.get_borrow(ident).is_none() {
-                    return Err(format!("Variable {ident} is not initialized"));
+                    return Err(BorrowError::VariableNotInitialized(ident.to_string()));
                 }
             }
 
@@ -274,7 +260,7 @@ impl<'a> BorrowChecker<'a> {
             return Ok(());
         }
 
-        Err(format!("Cannot borrow {name} as mutable"))
+        Err(BorrowError::CannotBorrowMutable(name.to_string()))
     }
     /// `borrow_imm` method should handle the logic of mutably borrowing a variable.
     ///
@@ -287,7 +273,7 @@ impl<'a> BorrowChecker<'a> {
             return Ok(());
         }
 
-        Err(format!("Cannot borrow {name} as immutable"))
+        Err(BorrowError::CannotBorrowImmutable(name.to_string()))
     }
     /// `free` method should handle the logic of releasing a borrow
     /// when a variable goes out of scope.
@@ -351,7 +337,7 @@ mod borrow_tests {
 
         assert_eq!(
             result,
-            Err("Cannot borrow b because it is not defined".to_string())
+            Err(BorrowError::VariableNotDefined("b".to_string()))
         );
     }
 
@@ -395,7 +381,7 @@ mod borrow_tests {
 
         assert_eq!(
             result,
-            Err("Variable a is declared without an initial value".to_string())
+            Err(BorrowError::DeclaredWithoutInitialValue("a".to_string()))
         );
     }
 
@@ -456,6 +442,10 @@ mod borrow_tests {
                 Statement::Expr(Expression::Ident("x".to_string())),
             ]),
         ];
-        assert_eq!(checker.check(&stmts), Err("Cannot borrow x as it is currently being mutably borrowed".to_string()));
+
+        assert_eq!(
+            checker.check(&stmts),
+            Err(BorrowError::BorrowedMutable("x".to_string()))
+        );
     }
 }
