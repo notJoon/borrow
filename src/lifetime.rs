@@ -11,7 +11,7 @@ use crate::errors::LifetimeError;
         the new memory allocatio field of the `Variable` struct.
     4. Update the lifetime checks. `check_lifetime` method needs to be updated to check
         that a variable's lifetime starts with the allocation and continues until the
-       memory place allocated for that variable's name no longer represents value of that
+        memory place allocated for that variable's name no longer represents value of that
 */
 
 /// Automatically generate a unique scope `id`.
@@ -28,6 +28,7 @@ fn next_scope_id() -> usize {
 pub struct Variable {
     state: BorrowState,
     scope_id: usize,
+    is_allocated: bool,
 }
 
 /// `Scope` is a collection of variables.
@@ -42,7 +43,13 @@ pub struct Scope<'a> {
 impl Variable {
     /// Creates a new `Variable` instance.
     pub fn new(state: BorrowState, scope_id: usize) -> Self {
-        Self { state, scope_id }
+        let is_allocated = state != BorrowState::Uninitialized;
+
+        Self { 
+            state, 
+            scope_id, 
+            is_allocated,
+        }
     }
 
     pub fn get_state(&self) -> &BorrowState {
@@ -50,7 +57,12 @@ impl Variable {
     }
 
     pub fn set_state(&mut self, state: BorrowState) {
+        self.is_allocated = state != BorrowState::Uninitialized;
         self.state = state;
+    }
+
+    pub fn is_allocated(&self) -> bool {
+        self.is_allocated
     }
 }
 
@@ -64,9 +76,19 @@ impl<'a> Scope<'a> {
         }
     }
 
-    /// Check if the scope contains a variable.
+    /// Check if the scope or any of its parent scopes contains a variable.
     pub fn contains_val(&self, var: &'a str) -> bool {
-        self.variables.contains_key(var)
+        // Check if the current scope contains the variable.
+        if self.variables.contains_key(var) {
+            return true;
+        }
+
+        // Check if the parent scope contains the variable.
+        if let Some(parent) = self.parent {
+            return parent.contains_val(var);
+        }
+
+        false
     }
 
     /// Insert a variable and borrow state into the scope.
@@ -80,8 +102,13 @@ impl<'a> Scope<'a> {
 
     pub fn set_state(&mut self, var: &'a str, state: BorrowState) {
         if let Some(variable) = self.variables.get_mut(var) {
+            variable.is_allocated = state != BorrowState::Uninitialized;
             variable.set_state(state);
         }
+    }
+
+    pub fn is_allocated(&self, var: &'a str) -> Option<bool> {
+        self.variables.get(var).map(|v| v.is_allocated())
     }
 
     pub fn check_lifetime(&self, var: &'a str, borrow_id: usize) -> Result<(), LifetimeError> {
@@ -91,7 +118,7 @@ impl<'a> Scope<'a> {
             return Ok(());
         }
 
-        if borrow_id < variable.scope_id {
+        if borrow_id < variable.scope_id || !variable.is_allocated() {
             return Err(LifetimeError::LifetimeTooShort(var.to_string()));
         }
 
@@ -166,7 +193,7 @@ mod lifetime_test {
         scope.set_state("x", BorrowState::Uninitialized);
         assert_eq!(scope.get_state("x"), Some(&BorrowState::Uninitialized));
         // Assuming that setting a variable's state to `Uninitialized` deallocates its memory.
-        assert_eq!(scope.is_allocated(), false);
+        assert_eq!(scope.is_allocated("x"), Some(false));
 
         scope.set_state("y", BorrowState::Borrowed);
         assert_eq!(scope.get_state("y"), None);
@@ -198,5 +225,33 @@ mod lifetime_test {
 
         scope.set_state("x", BorrowState::Uninitialized);
         assert!(scope.check_borrow_rules("x").is_ok());
+    }
+
+    #[test]
+    fn test_lifetime_in_nested_scope() {
+        let mut parent_scope = Scope::new(None);
+        parent_scope.insert("x", BorrowState::Uninitialized);
+
+        {
+            let mut child_scope = Scope::new(Some(&parent_scope));
+            child_scope.insert("y", BorrowState::Uninitialized);
+
+            {
+                let mut child_child_scope = Scope::new(Some(&child_scope));
+                child_child_scope.insert("z", BorrowState::Uninitialized);
+
+                assert!(child_child_scope.contains_val("x"));
+                assert!(child_child_scope.contains_val("y"));
+                assert!(child_child_scope.contains_val("z"));
+            }
+
+            assert!(child_scope.contains_val("x"));
+            assert!(child_scope.contains_val("y"));
+            assert!(!child_scope.contains_val("z"));
+        }
+
+        assert!(parent_scope.contains_val("x"));
+        assert!(!parent_scope.contains_val("y"));
+        assert!(!parent_scope.contains_val("z"));
     }
 }
