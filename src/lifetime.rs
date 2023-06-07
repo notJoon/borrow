@@ -34,14 +34,14 @@ pub struct Scope<'a> {
 
 impl Variable {
     /// Creates a new `Variable` instance with given `state` and `scope_id`.
-    /// 
+    ///
     /// The `is_allocated` field is set to `true` if the `state` is not `Uninitialized`.
     pub fn new(state: BorrowState, scope_id: usize) -> Self {
         let is_allocated = state != BorrowState::Uninitialized;
 
-        Self { 
-            state, 
-            scope_id, 
+        Self {
+            state,
+            scope_id,
             is_allocated,
         }
     }
@@ -52,7 +52,7 @@ impl Variable {
     }
 
     /// Sets the state of the variable.
-    /// 
+    ///
     /// The `is_allocated` field is updated based on the new `state`.
     pub fn set_state(&mut self, state: BorrowState) {
         self.is_allocated = state != BorrowState::Uninitialized;
@@ -67,7 +67,7 @@ impl Variable {
 
 impl<'a> Scope<'a> {
     /// Creates a new `scope` instance with the given `parent` scope.
-    /// 
+    ///
     /// The ID is automatically generated.
     pub fn new(parent: Option<&'a Scope<'a>>) -> Self {
         Self {
@@ -93,7 +93,7 @@ impl<'a> Scope<'a> {
     }
 
     /// Insert a variable\ with the given `state` into the scope.
-    /// 
+    ///
     /// The variable is allocated memory if its state is not `Uninitialized`.
     pub fn insert(&mut self, var: &'a str, state: BorrowState) {
         self.variables.insert(var, Variable::new(state, self.id));
@@ -105,7 +105,7 @@ impl<'a> Scope<'a> {
     }
 
     /// Sets the state of a variable in the scope.
-    /// 
+    ///
     /// The variable's memory allocation is updated based on the new state.
     pub fn set_state(&mut self, var: &'a str, state: BorrowState) {
         if let Some(variable) = self.variables.get_mut(var) {
@@ -120,7 +120,7 @@ impl<'a> Scope<'a> {
     }
 
     /// Checks the lifetime of a variable in the scope or any of its parent scopes.
-    /// 
+    ///
     /// if the variable's lifetime is too short, an error is returned.
     pub fn check_lifetime(&self, var: &'a str, borrow_id: usize) -> Result<(), LifetimeError> {
         let variable = self.get_variable(var)?;
@@ -143,7 +143,7 @@ impl<'a> Scope<'a> {
     }
 
     /// Checks the borrow rules of a variable in the scope or any of its parent scopes.
-    /// 
+    ///
     /// if the variable is borrowed mutably, an error is returned.
     pub fn check_borrow_rules(&self, var: &'a str) -> Result<(), LifetimeError> {
         let variable = self.get_variable(var)?;
@@ -157,7 +157,7 @@ impl<'a> Scope<'a> {
     }
 
     /// Returns a reference to a variable in the scope or any of its parent scopes.
-    /// 
+    ///
     /// If the variable is not found, an error is returned.
     fn get_variable(&self, var: &'a str) -> Result<&Variable, LifetimeError> {
         if let Some(variable) = self.variables.get(var) {
