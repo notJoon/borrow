@@ -409,29 +409,48 @@ mod borrow_tests {
     #[test]
     fn test_nested_scope_borrow_checking() {
         let mut checker = BorrowChecker::new();
+
+        // let a = 10;
+        //  {
+        //    let b = &a;
+        //  }
+        // let c = &a;
         let stmts = vec![
             Statement::VariableDecl {
-                name: "x".to_string(),
-                value: Some(Expression::Number(5)),
+                name: "a".to_string(),
+                value: Some(Expression::Number(10)),
                 is_borrowed: false,
             },
-            Statement::Scope(vec![
-                Statement::VariableDecl {
-                    name: "y".to_string(),
-                    value: Some(Expression::Reference("x".to_string())),
-                    is_borrowed: true,
-                },
-                Statement::Expr(Expression::Ident("y".to_string())),
-            ]),
-            Statement::Expr(Expression::Ident("x".to_string())),
+            Statement::Scope(vec![Statement::VariableDecl {
+                name: "b".to_string(),
+                value: Some(Expression::Reference("a".to_string())),
+                is_borrowed: true,
+            }]),
+            Statement::VariableDecl {
+                name: "c".to_string(),
+                value: Some(Expression::Reference("a".to_string())),
+                is_borrowed: true,
+            },
         ];
 
         assert_eq!(checker.check(&stmts), Ok(()));
     }
 
     #[test]
-    fn test_nested_scope_with_multiple_borrows() {
+    fn test_nested_scope_with_multiple_borrows_throw_error() {
         let mut checker = BorrowChecker::new();
+
+        let input = r#"
+            let x = 5;
+            {
+                let y = &x;
+                let z = &x;
+            }
+        "#;
+
+        let result = setup(input);
+        let result = checker.check(&result);
+
         let stmts = vec![
             Statement::VariableDecl {
                 name: "x".to_string(),
@@ -449,13 +468,10 @@ mod borrow_tests {
                     value: Some(Expression::Reference("x".to_string())),
                     is_borrowed: true,
                 },
-                Statement::Expr(Expression::Ident("y".to_string())),
-                Statement::Expr(Expression::Ident("z".to_string())),
             ]),
-            Statement::Expr(Expression::Ident("x".to_string())),
         ];
 
-        assert_eq!(checker.check(&stmts), Ok(()));
+        assert_eq!(result, Err(BorrowError::BorrowedMutable("x".to_string())));
     }
 
     #[test]
