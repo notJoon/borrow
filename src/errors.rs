@@ -85,10 +85,10 @@ impl std::fmt::Display for BorrowError {
             }
             BorrowError::VariableDeclaredDuplicate(var) => {
                 write!(f, "Variable {var} is already declared in the current scope")
-            },
+            }
             BorrowError::VariableNotInScope(var) => {
                 write!(f, "Variable {var} is not in scope")
-            },
+            }
             BorrowError::InvalidBorrowMutablyBorrowed(var) => write!(
                 f,
                 "Cannot borrow {var}. It is currently being mutably borrowed"
@@ -117,7 +117,7 @@ impl std::fmt::Debug for BorrowError {
             BorrowError::VariableNotInitialized(var) => write!(f, "VariableNotInitialized: {var}"),
             BorrowError::VariableDeclaredDuplicate(var) => {
                 write!(f, "VariableDeclaredDuplicate: {var}")
-            },
+            }
             BorrowError::VariableNotInScope(var) => write!(f, "VariableNotInScope: {var}"),
             BorrowError::InvalidBorrowMutablyBorrowed(var) => {
                 write!(f, "InvalidBorrowMutablyBorrowed: {var}")
@@ -131,3 +131,30 @@ impl std::fmt::Debug for BorrowError {
 }
 
 impl std::error::Error for BorrowError {}
+
+#[derive(PartialEq, Eq, Clone)]
+pub enum OwnerGraphError {
+    MultipleOwners(String),
+}
+
+impl std::fmt::Debug for OwnerGraphError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OwnerGraphError::MultipleOwners(variable) => {
+                write!(f, "Variable {variable} has multiple owners")
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for OwnerGraphError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OwnerGraphError::MultipleOwners(variable) => {
+                write!(f, "Variable {variable} has multiple owners")
+            }
+        }
+    }
+}
+
+impl std::error::Error for OwnerGraphError {}
