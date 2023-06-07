@@ -757,6 +757,7 @@ mod parser_test {
     #[test]
     fn test_scope() {
         let input = r#"
+            let x = 10;
             {
                 let x = 5;
                 let y = 10;
@@ -766,21 +767,29 @@ mod parser_test {
         let tokens = setup(input);
         let mut parser = Parser::new(&tokens);
         let stmts = parser.parse();
+        // println!("{:?}", stmts);
 
         assert_eq!(
             stmts,
-            vec![Statement::Scope(vec![
+            vec![
                 Statement::VariableDecl {
                     name: "x".to_string(),
-                    value: Some(Expression::Number(5)),
-                    is_borrowed: false,
-                },
-                Statement::VariableDecl {
-                    name: "y".to_string(),
                     value: Some(Expression::Number(10)),
                     is_borrowed: false,
                 },
-            ])]
+                Statement::Scope(vec![
+                    Statement::VariableDecl {
+                        name: "x".to_string(),
+                        value: Some(Expression::Number(5)),
+                        is_borrowed: false,
+                    },
+                    Statement::VariableDecl {
+                        name: "y".to_string(),
+                        value: Some(Expression::Number(10)),
+                        is_borrowed: false,
+                    },
+                ])
+            ]
         )
     }
 
@@ -812,6 +821,45 @@ mod parser_test {
                 Statement::VariableDecl {
                     name: "c".to_string(),
                     value: Some(Expression::Reference("b".to_string())),
+                    is_borrowed: true,
+                },
+            ]
+        )
+    }
+
+    #[test]
+    fn test_parse_nested_referenced_variables() {
+        let input = r#"
+        let a = 10;
+        {
+            let b = &a;
+        }
+        let c = &a;
+        "#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+
+        let stmts = parser.parse();
+
+        println!("{:?}", stmts);
+
+        assert_eq!(
+            stmts,
+            vec![
+                Statement::VariableDecl {
+                    name: "a".to_string(),
+                    value: Some(Expression::Number(10)),
+                    is_borrowed: false,
+                },
+                Statement::Scope(vec![Statement::VariableDecl {
+                    name: "b".to_string(),
+                    value: Some(Expression::Reference("a".to_string())),
+                    is_borrowed: true,
+                }]),
+                Statement::VariableDecl {
+                    name: "c".to_string(),
+                    value: Some(Expression::Reference("a".to_string())),
                     is_borrowed: true,
                 },
             ]
@@ -943,6 +991,45 @@ mod parser_test {
                 name: "foo".to_string(),
                 args: None,
                 body: vec![Statement::Return(Some(Expression::Number(5)))],
+            }]
+        )
+    }
+
+    #[test]
+    fn test_add_two_variable_and_return_as_value() {
+        let input = r#"
+            function foo() {
+                let a = 10;
+                let b = 20;
+                return a + b;
+            }
+        "#;
+
+        let tokens = setup(input);
+        let mut parser = Parser::new(&tokens);
+
+        assert_eq!(
+            parser.parse(),
+            vec![Statement::FunctionDef {
+                name: "foo".to_string(),
+                args: None,
+                body: vec![
+                    Statement::VariableDecl {
+                        name: "a".to_string(),
+                        value: Some(Expression::Number(10)),
+                        is_borrowed: false,
+                    },
+                    Statement::VariableDecl {
+                        name: "b".to_string(),
+                        value: Some(Expression::Number(20)),
+                        is_borrowed: false,
+                    },
+                    Statement::Return(Some(Expression::BinaryOp {
+                        lhs: Box::new(Expression::Ident("a".to_string())),
+                        op: BinaryOp::Plus,
+                        rhs: Box::new(Expression::Ident("b".to_string())),
+                    })),
+                ],
             }]
         )
     }
