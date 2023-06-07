@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::{ast::{Expression, Statement}, errors::BorrowError};
+use crate::{
+    ast::{Expression, Statement},
+    errors::BorrowError,
+};
 
 type BorrowResult = Result<(), BorrowError>;
 
@@ -74,7 +77,9 @@ impl<'a> BorrowChecker<'a> {
                             return Err(BorrowError::BorrowedMutable(ident.to_string()));
                         }
                         BorrowState::Uninitialized => {
-                            return Err(BorrowError::DeclaredWithoutInitialValue(ident.to_string()));
+                            return Err(BorrowError::DeclaredWithoutInitialValue(
+                                ident.to_string(),
+                            ));
                         }
                         _ => {}
                     }
@@ -425,7 +430,36 @@ mod borrow_tests {
     }
 
     #[test]
-    fn test_nested_scope_with_borrow() {
+    fn test_nested_scope_with_multiple_borrows() {
+        let mut checker = BorrowChecker::new();
+        let stmts = vec![
+            Statement::VariableDecl {
+                name: "x".to_string(),
+                value: Some(Expression::Number(5)),
+                is_borrowed: false,
+            },
+            Statement::Scope(vec![
+                Statement::VariableDecl {
+                    name: "y".to_string(),
+                    value: Some(Expression::Reference("x".to_string())),
+                    is_borrowed: true,
+                },
+                Statement::VariableDecl {
+                    name: "z".to_string(),
+                    value: Some(Expression::Reference("x".to_string())),
+                    is_borrowed: true,
+                },
+                Statement::Expr(Expression::Ident("y".to_string())),
+                Statement::Expr(Expression::Ident("z".to_string())),
+            ]),
+            Statement::Expr(Expression::Ident("x".to_string())),
+        ];
+
+        assert_eq!(checker.check(&stmts), Ok(()));
+    }
+
+    #[test]
+    fn test_nested_scope_with_mut_borrow_and_use_in_same_scope() {
         let mut checker = BorrowChecker::new();
         let stmts = vec![
             Statement::VariableDecl {
@@ -442,10 +476,30 @@ mod borrow_tests {
                 Statement::Expr(Expression::Ident("x".to_string())),
             ]),
         ];
-
         assert_eq!(
             checker.check(&stmts),
-            Err(BorrowError::BorrowedMutable("x".to_string()))
+            Err(BorrowError::InvalidBorrowMutablyBorrowed("x".to_string())),
+        );
+    }
+
+    #[test]
+    fn test_nested_scope_with_uninitialized_variable() {
+        let mut checker = BorrowChecker::new();
+        let stmts = vec![
+            Statement::VariableDecl {
+                name: "x".to_string(),
+                value: None,
+                is_borrowed: false,
+            },
+            Statement::Scope(vec![Statement::VariableDecl {
+                name: "y".to_string(),
+                value: Some(Expression::Reference("x".to_string())),
+                is_borrowed: true,
+            }]),
+        ];
+        assert_eq!(
+            checker.check(&stmts),
+            Err(BorrowError::DeclaredWithoutInitialValue("x".to_string())),
         );
     }
 }

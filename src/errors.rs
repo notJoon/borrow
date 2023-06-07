@@ -55,6 +55,7 @@ pub enum BorrowError {
     VariableNotDefined(String),
     VariableNotInitialized(String),
     VariableDeclaredDuplicate(String),
+    VariableNotInScope(String),
     InvalidBorrowMutablyBorrowed(String),
     InvalidBorrow(String),
     NoScopeAvailable(String),
@@ -73,42 +74,33 @@ impl std::fmt::Display for BorrowError {
                 f,
                 "Cannot borrow {var} as it is currently being immutably borrowed"
             ),
-            BorrowError::DeclaredWithoutInitialValue(var) => write!(
-                f,
-                "Variable {var} is declared without an initial value"
-            ),
-            BorrowError::VariableNotDefined(var) => write!(
-                f,
-                "Variable {var} is not defined in the current scope"
-            ),
-            BorrowError::VariableNotInitialized(var) => write!(
-                f,
-                "Variable {var} is not initialized"
-            ),
-            BorrowError::VariableDeclaredDuplicate(var) => write!(
-                f,
-                "Variable {var} is already declared in the current scope"
-            ),
+            BorrowError::DeclaredWithoutInitialValue(var) => {
+                write!(f, "Variable {var} is declared without an initial value")
+            }
+            BorrowError::VariableNotDefined(var) => {
+                write!(f, "Variable {var} is not defined in the current scope")
+            }
+            BorrowError::VariableNotInitialized(var) => {
+                write!(f, "Variable {var} is not initialized")
+            }
+            BorrowError::VariableDeclaredDuplicate(var) => {
+                write!(f, "Variable {var} is already declared in the current scope")
+            },
+            BorrowError::VariableNotInScope(var) => {
+                write!(f, "Variable {var} is not in scope")
+            },
             BorrowError::InvalidBorrowMutablyBorrowed(var) => write!(
                 f,
                 "Cannot borrow {var}. It is currently being mutably borrowed"
             ),
-            BorrowError::InvalidBorrow(var) => write!(
-                f,
-                "Invalid borrow of {var}"
-            ),
-            BorrowError::NoScopeAvailable(var) => write!(
-                f,
-                "No scope available for variable of {var}"
-            ),
-            BorrowError::CannotBorrowMutable(var) => write!(
-                f,
-                "Cannot borrow {var} as mutable"
-            ),
-            BorrowError::CannotBorrowImmutable(var) => write!(
-                f,
-                "Cannot borrow {var} as immutable"
-            ),
+            BorrowError::InvalidBorrow(var) => write!(f, "Invalid borrow of {var}"),
+            BorrowError::NoScopeAvailable(var) => {
+                write!(f, "No scope available for variable of {var}")
+            }
+            BorrowError::CannotBorrowMutable(var) => write!(f, "Cannot borrow {var} as mutable"),
+            BorrowError::CannotBorrowImmutable(var) => {
+                write!(f, "Cannot borrow {var} as immutable")
+            }
         }
     }
 }
@@ -118,11 +110,18 @@ impl std::fmt::Debug for BorrowError {
         match self {
             BorrowError::BorrowedMutable(var) => write!(f, "BorrowedMutable: {var}"),
             BorrowError::BorrowedImmut(var) => write!(f, "BorrowedImmut: {var}"),
-            BorrowError::DeclaredWithoutInitialValue(var) => write!(f, "DeclaredWithoutInitialValue: {var}"),
+            BorrowError::DeclaredWithoutInitialValue(var) => {
+                write!(f, "DeclaredWithoutInitialValue: {var}")
+            }
             BorrowError::VariableNotDefined(var) => write!(f, "VariableNotDefined: {var}"),
             BorrowError::VariableNotInitialized(var) => write!(f, "VariableNotInitialized: {var}"),
-            BorrowError::VariableDeclaredDuplicate(var) => write!(f, "VariableDeclaredDuplicate: {var}"),
-            BorrowError::InvalidBorrowMutablyBorrowed(var) => write!(f, "InvalidBorrowMutablyBorrowed: {var}"),
+            BorrowError::VariableDeclaredDuplicate(var) => {
+                write!(f, "VariableDeclaredDuplicate: {var}")
+            },
+            BorrowError::VariableNotInScope(var) => write!(f, "VariableNotInScope: {var}"),
+            BorrowError::InvalidBorrowMutablyBorrowed(var) => {
+                write!(f, "InvalidBorrowMutablyBorrowed: {var}")
+            }
             BorrowError::InvalidBorrow(var) => write!(f, "InvalidBorrow: {var}"),
             BorrowError::NoScopeAvailable(var) => write!(f, "NoScopeAvailable: {var}"),
             BorrowError::CannotBorrowMutable(var) => write!(f, "CannotBorrowMutable: {var}"),
