@@ -185,6 +185,53 @@ mod ownership_graph_tests {
     }
 
     #[test]
+    fn test_multiple_reference_and_normal_allocation() {
+        // let a = 42;
+        // let b = &a;
+        // let c = &b;
+        // let d = a;
+        let stmts = vec![
+            Statement::VariableDecl {
+                name: "a".into(),
+                is_borrowed: false,
+                value: Some(Expression::Number(42)),
+            },
+            Statement::VariableDecl {
+                name: "b".into(),
+                is_borrowed: true,
+                value: Some(Expression::Reference("a".into())),
+            },
+            Statement::VariableDecl {
+                name: "c".into(),
+                is_borrowed: true,
+                value: Some(Expression::Reference("b".into())),
+            },
+            Statement::VariableDecl {
+                name: "d".into(),
+                is_borrowed: false,
+                value: Some(Expression::Reference("a".into())),
+            },
+        ];
+        
+        let graph = build_ownership_graph(&stmts).unwrap();
+
+        println!("{:?}", graph);
+
+        assert_eq!(
+            graph,
+            OwnershipGraph {
+                graph: vec![
+                    ("".into(), vec!["a".into()]),
+                    ("a".into(), vec!["b".into(), "d".into()]),
+                    ("b".into(), vec!["c".into()]),
+                ]
+                .into_iter()
+                .collect(),
+            }
+        );
+    }
+
+    #[test]
     fn test_include_the_borrowing_of_other_variable() {
         // let x;
         // let y = &x;
