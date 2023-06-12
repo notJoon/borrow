@@ -86,9 +86,10 @@ fn build_ownership_graph(stmts: &[Statement]) -> Result<OwnershipGraph, OwnerGra
                         graph.add_borrower(&current_owner, name);
                         // current_owner = name.clone();
                     }
+                } else {
+                    current_owner = "".to_string();
                 }
                 graph.add_owner(&current_owner, name);
-                current_owner = name.clone();
             }
             Statement::Scope(scope) =>  {
                 let prev_owner = current_owner.clone();
