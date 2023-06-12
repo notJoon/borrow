@@ -166,8 +166,9 @@ mod ownership_graph_tests {
                 value: Some(Expression::Reference("b".into())),
             },
         ];
-        let graph = build_ownership_graph(&stmts).unwrap();
         
+        let graph = build_ownership_graph(&stmts).unwrap();
+
         println!("{:?}", graph);
 
         assert_eq!(
@@ -188,8 +189,9 @@ mod ownership_graph_tests {
     fn test_multiple_reference_and_normal_allocation() {
         // let a = 42;
         // let b = &a;
-        // let c = &b;
-        // let d = a;
+        // let c = &a;
+        // let d = &b;
+        // let e = 10;
         let stmts = vec![
             Statement::VariableDecl {
                 name: "a".into(),
@@ -204,26 +206,30 @@ mod ownership_graph_tests {
             Statement::VariableDecl {
                 name: "c".into(),
                 is_borrowed: true,
-                value: Some(Expression::Reference("b".into())),
+                value: Some(Expression::Reference("a".into())),
             },
             Statement::VariableDecl {
                 name: "d".into(),
+                is_borrowed: true,
+                value: Some(Expression::Reference("b".into())),
+            },
+            Statement::VariableDecl {
+                name: "e".into(),
                 is_borrowed: false,
-                value: Some(Expression::Reference("a".into())),
+                value: Some(Expression::Number(10)),
             },
         ];
-        
         let graph = build_ownership_graph(&stmts).unwrap();
-
+        
         println!("{:?}", graph);
-
+        
         assert_eq!(
             graph,
             OwnershipGraph {
                 graph: vec![
-                    ("".into(), vec!["a".into()]),
-                    ("a".into(), vec!["b".into(), "d".into()]),
-                    ("b".into(), vec!["c".into()]),
+                    ("".into(), vec!["a".into(), "e".into()]),
+                    ("a".into(), vec!["b".into(), "c".into()]),
+                    ("b".into(), vec!["d".into()]),
                 ]
                 .into_iter()
                 .collect(),
