@@ -75,7 +75,7 @@ impl Default for OwnershipGraph {
 /// declarations and borrow expressions.
 fn build_ownership_graph(stmts: &[Statement]) -> Result<OwnershipGraph, OwnerGraphError> {
     let mut graph = OwnershipGraph::default();
-    let mut current_owner = "".to_string();
+    let mut current_owner = "global_var".to_string();
 
     for stmt in stmts {
         match stmt {
@@ -175,7 +175,7 @@ mod ownership_graph_tests {
             graph,
             OwnershipGraph {
                 graph: vec![
-                    ("".into(), vec!["a".into()]),
+                    ("global_var".into(), vec!["a".into()]),
                     ("a".into(), vec!["b".into(), "c".into()]),
                     ("b".into(), vec!["d".into()]),
                 ]
@@ -227,9 +227,10 @@ mod ownership_graph_tests {
             graph,
             OwnershipGraph {
                 graph: vec![
-                    ("".into(), vec!["a".into(), "e".into()]),
+                    ("global_var".into(), vec!["a".into(), "e".into()]),
                     ("a".into(), vec!["b".into(), "c".into()]),
                     ("b".into(), vec!["d".into()]),
+                    ("d".into(), vec!["b".into()]),
                 ]
                 .into_iter()
                 .collect(),
@@ -267,7 +268,7 @@ mod ownership_graph_tests {
             graph,
             OwnershipGraph {
                 graph: vec![
-                    ("".into(), vec!["x".into()]),
+                    ("global_var".into(), vec!["x".into()]),
                     ("x".into(), vec!["y".into()]),
                     ("y".into(), vec!["z".into()]),
                 ]
@@ -305,7 +306,7 @@ mod ownership_graph_tests {
             graph,
             OwnershipGraph {
                 graph: vec![
-                    ("".into(), vec!["x".into()]),
+                    ("global_var".into(), vec!["x".into()]),
                     ("x".into(), vec!["y".into()]),
                 ]
                 .into_iter()
@@ -348,7 +349,7 @@ mod ownership_graph_tests {
             graph,
             OwnershipGraph {
                 graph: vec![
-                    ("".into(), vec!["x".into()]),
+                    ("global_var".into(), vec!["x".into()]),
                     // I'm not sure
                     ("x".into(), vec!["y".into(), "z".into()]),
                 ]
