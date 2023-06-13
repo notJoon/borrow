@@ -74,8 +74,9 @@ impl Default for OwnershipGraph {
 /// It iterates through the list of statements (AST generated from the parser) and processes variable
 /// declarations and borrow expressions.
 fn build_ownership_graph(stmts: &[Statement]) -> Result<OwnershipGraph, OwnerGraphError> {
+    const GLOBAL: &str = "global_var";
     let mut graph = OwnershipGraph::default();
-    let mut current_owner = "global_var".to_string();
+    let mut current_owner = GLOBAL.to_string();
 
     for stmt in stmts {
         match stmt {
@@ -87,7 +88,7 @@ fn build_ownership_graph(stmts: &[Statement]) -> Result<OwnershipGraph, OwnerGra
                         // current_owner = name.clone();
                     }
                 } else {
-                    current_owner = "".to_string();
+                    current_owner = GLOBAL.to_string();
                 }
                 graph.add_owner(&current_owner, name);
             }
@@ -231,12 +232,11 @@ mod ownership_graph_tests {
                     ("global_var".into(), vec!["a".into(), "e".into()]),
                     ("a".into(), vec!["b".into(), "c".into()]),
                     ("b".into(), vec!["d".into()]),
-                    ("d".into(), vec!["b".into()]),
                 ]
                 .into_iter()
                 .collect(),
             }
-        );
+        )
     }
 
     #[test]
