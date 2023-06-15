@@ -43,6 +43,34 @@ impl<'a> BorrowChecker<'a> {
             }
         }
     }
+    /// This function helps to manage the scope of borrow checking.
+    /// It accepts a closure `action` which is executed within a new scope.
+    /// The function automatically handles the scope entering and exiting
+    /// by pushing a new `HashMap` to `self.borrows` and popping it after `action` execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - A closure that encapsulates the actions to be performed within the new scope.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `F` - The type of the closure.
+    /// * `T` - The output type of the closure.
+    fn allocate_scope<F, T>(&mut self, action: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        // enter new scope
+        self.borrows.push(HashMap::new());
+
+        // apply action within the scope
+        let result = action(self);
+
+        // exit scope
+        self.borrows.pop();
+
+        result
+    }
 
     fn check_statement(&mut self, stmt: &'a Statement) -> BorrowResult {
         match stmt {
@@ -52,15 +80,9 @@ impl<'a> BorrowChecker<'a> {
                 is_borrowed,
             } => self.check_variable_decl(name, value, *is_borrowed),
             Statement::FunctionDef { name, args, body } => {
-                self.check_function_def(name, args, body)
+                self.allocate_scope(|s| s.check_function_def(name, args, body))
             }
-            Statement::Scope(stmts) => {
-                self.borrows.push(HashMap::new());      // enter new scope
-                let result = self.check(stmts);         // check statements
-                self.borrows.pop();                     // exit scope
-
-                result
-            },
+            Statement::Scope(stmts) => self.allocate_scope(|s| s.check(stmts)),
             Statement::Return(expr) => self.check_return(expr),
             Statement::Expr(expr) => self.check_expression(expr),
         }
@@ -94,7 +116,7 @@ impl<'a> BorrowChecker<'a> {
                         _ => {}
                     }
                     // [NOTE] 2023-06-15
-                    // `BorrowState::ImmutBorrowed` and `BorrowState::Initialized` into the borrows hashmap 
+                    // `BorrowState::ImmutBorrowed` and `BorrowState::Initialized` into the borrows hashmap
                     // for the same variable name. This could cause potential issue like overwrite the borrow state.
                     self.insert_borrow(name, BorrowState::ImmutBorrowed);
 
@@ -159,11 +181,12 @@ impl<'a> BorrowChecker<'a> {
         // check args if exists
         if let Some(args) = args {
             for (arg, is_borrowed) in args {
+                // Insert each argument into the current scope as an initialized variable
+                self.insert_borrow(arg, BorrowState::Initialized);
+
                 if *is_borrowed {
                     self.borrow_imm(arg)?;
                 }
-
-                self.declare(arg.as_str())?;
             }
         }
 
@@ -183,7 +206,6 @@ impl<'a> BorrowChecker<'a> {
             }
 
             scope.insert(var, BorrowState::Uninitialized);
-
             return Ok(());
         }
 
@@ -442,7 +464,10 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
-        assert_eq!(result, Err(BorrowError::VariableNotDefined("b".to_string())));
+        assert_eq!(
+            result,
+            Err(BorrowError::VariableNotDefined("b".to_string()))
+        );
     }
 
     #[test]
@@ -502,7 +527,10 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
-        assert_eq!(result, Err(BorrowError::VariableNotDefined("z".to_string())));
+        assert_eq!(
+            result,
+            Err(BorrowError::VariableNotDefined("z".to_string()))
+        );
     }
 
     #[test]
@@ -539,7 +567,6 @@ mod borrow_tests {
     }
 
     #[test]
-    #[ignore = "function's parameter is not a variable. So it does not need to initialize."]
     fn check_borrow_in_function_decl() {
         let mut checker = BorrowChecker::new();
 
@@ -550,6 +577,43 @@ mod borrow_tests {
 
             let x = 5;
             foo(&x);
+        "#;
+
+        let result = setup(input);
+        let result = checker.check(&result);
+
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn check_borrow_multiple_function_decl() {
+        let mut checker = BorrowChecker::new();
+
+        let input = r#"
+            function foo(a) {
+                let b = &a;
+            }
+
+            function bar(a) {
+                let b = &a;
+                let d = foo(&b);
+
+                return d;
+            }
+
+            function baz(a, b) {
+                let c = foo(&a);
+                let d = bar(&b);
+
+                return c + d;
+            }
+
+            let x = 5;
+            let y = 10;
+
+            foo(&x);
+            bar(&y);
+            baz(foo(&x), bar(&y));
         "#;
 
         let result = setup(input);
