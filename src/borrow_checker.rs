@@ -106,12 +106,10 @@ impl<'a> BorrowChecker<'a> {
                         // but, we allows to have multiple immutable borrows of the same variable.
                         // so, modified it to check only `Borrowed` state.
                         BorrowState::Borrowed => {
-                            return Err(BorrowError::BorrowedMutable(ident.to_string()));
+                            return Err(BorrowError::BorrowedMutable(ident.into()));
                         }
                         BorrowState::Uninitialized => {
-                            return Err(BorrowError::DeclaredWithoutInitialValue(
-                                ident.to_string(),
-                            ));
+                            return Err(BorrowError::DeclaredWithoutInitialValue(ident.into()));
                         }
                         _ => {}
                     }
@@ -123,16 +121,16 @@ impl<'a> BorrowChecker<'a> {
                     return Ok(());
                 }
 
-                Err(BorrowError::VariableNotDefined(ident.to_string()))
+                Err(BorrowError::VariableNotDefined(ident.into()))
             }
-            (true, _) => Err(BorrowError::VariableNotInitialized(name.to_string())),
+            (true, _) => Err(BorrowError::VariableNotInitialized(name.into())),
             (false, Some(expr)) => {
                 self.check_expression(expr)?;
                 self.insert_borrow(name, BorrowState::Initialized);
 
                 Ok(())
             }
-            (false, None) => Err(BorrowError::DeclaredWithoutInitialValue(name.to_string())),
+            (false, None) => Err(BorrowError::DeclaredWithoutInitialValue(name.into())),
         }
     }
 
@@ -144,17 +142,17 @@ impl<'a> BorrowChecker<'a> {
         if let Some(Expression::Ident(ref ident)) = value {
             if let Some(state) = self.get_borrow(ident) {
                 if state == &BorrowState::Borrowed {
-                    return Err(BorrowError::InvalidBorrowMutablyBorrowed(ident.to_string()));
+                    return Err(BorrowError::InvalidBorrowMutablyBorrowed(ident.into()));
                 }
 
                 self.insert_borrow(name, BorrowState::ImmutBorrowed);
                 return Ok(());
             }
 
-            return Err(BorrowError::VariableNotDefined(ident.to_string()));
+            return Err(BorrowError::VariableNotDefined(ident.into()));
         }
 
-        Err(BorrowError::InvalidBorrow(name.to_string()))
+        Err(BorrowError::InvalidBorrow(name.into()))
     }
 
     fn check_value_expr(&mut self, value: &'a Option<Expression>) -> BorrowResult {
@@ -202,14 +200,14 @@ impl<'a> BorrowChecker<'a> {
     fn declare(&mut self, var: &'a str) -> BorrowResult {
         if let Some(scope) = self.borrows.last_mut() {
             if scope.contains_key(var) {
-                return Err(BorrowError::VariableDeclaredDuplicate(var.to_string()));
+                return Err(BorrowError::VariableDeclaredDuplicate(var.into()));
             }
 
             scope.insert(var, BorrowState::Uninitialized);
             return Ok(());
         }
 
-        Err(BorrowError::NoScopeAvailable(var.to_string()))
+        Err(BorrowError::NoScopeAvailable(var.into()))
     }
     /// `check_function_call` checks a function call.
     ///
@@ -221,7 +219,7 @@ impl<'a> BorrowChecker<'a> {
 
             if let Expression::Ident(ident) = arg {
                 if let Some(BorrowState::Borrowed) = self.get_borrow(ident) {
-                    return Err(BorrowError::BorrowedMutable(ident.to_string()));
+                    return Err(BorrowError::BorrowedMutable(ident.into()));
                 }
             }
         }
@@ -241,7 +239,7 @@ impl<'a> BorrowChecker<'a> {
                 let borrow = self.get_borrow(var);
 
                 if let Some(BorrowState::Borrowed) = borrow {
-                    return Err(BorrowError::BorrowedMutable(var.to_string()));
+                    return Err(BorrowError::BorrowedMutable(var.into()));
                 }
             }
 
@@ -254,7 +252,7 @@ impl<'a> BorrowChecker<'a> {
             // if the expression is an identifier, check if the variable is already borrowed
             Expression::Ident(ident) => {
                 if self.get_borrow(ident).is_none() {
-                    return Err(BorrowError::VariableNotInitialized(ident.to_string()));
+                    return Err(BorrowError::VariableNotInitialized(ident.into()));
                 }
             }
 
@@ -282,7 +280,7 @@ impl<'a> BorrowChecker<'a> {
             return Ok(());
         }
 
-        Err(BorrowError::CannotBorrowMutable(name.to_string()))
+        Err(BorrowError::CannotBorrowMutable(name.into()))
     }
     /// `borrow_imm` method should handle the logic of mutably borrowing a variable.
     ///
@@ -295,21 +293,8 @@ impl<'a> BorrowChecker<'a> {
             return Ok(());
         }
 
-        Err(BorrowError::CannotBorrowImmutable(name.to_string()))
+        Err(BorrowError::CannotBorrowImmutable(name.into()))
     }
-    /// `free` method should handle the logic of releasing a borrow
-    /// when a variable goes out of scope.
-    ///
-    /// It should remove the variable from the `BorrowChecker`.
-    fn free(&mut self, var: &'a str) -> Option<BorrowState> {
-        if !self.is_borrow_contains_key(var) {
-            return None;
-        }
-
-        self.remove_borrow(var)
-    }
-
-    /// helper functions
 
     fn get_borrow(&mut self, var: &'a str) -> Option<&BorrowState> {
         for scope in self.borrows.iter().rev() {
@@ -367,10 +352,7 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
-        assert_eq!(
-            result,
-            Err(BorrowError::VariableNotDefined("b".to_string()))
-        );
+        assert_eq!(result, Err(BorrowError::VariableNotDefined("b".into())));
     }
 
     #[test]
@@ -379,12 +361,15 @@ mod borrow_tests {
 
         // let b = &a;
         let stmts = vec![Statement::VariableDecl {
-            name: "b".to_string(),
-            value: Some(Expression::Reference("a".to_string())),
+            name: "b".into(),
+            value: Some(Expression::Reference("a".into())),
             is_borrowed: true,
         }];
 
-        assert!(checker.check(&stmts).is_err());
+        assert_eq!(
+            checker.check(&stmts),
+            Err(BorrowError::VariableNotDefined("a".into()))
+        );
     }
 
     #[test]
@@ -413,7 +398,7 @@ mod borrow_tests {
 
         assert_eq!(
             result,
-            Err(BorrowError::DeclaredWithoutInitialValue("a".to_string()))
+            Err(BorrowError::DeclaredWithoutInitialValue("a".into()))
         );
     }
 
@@ -464,10 +449,7 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
-        assert_eq!(
-            result,
-            Err(BorrowError::VariableNotDefined("b".to_string()))
-        );
+        assert_eq!(result, Err(BorrowError::VariableNotDefined("b".into())));
     }
 
     #[test]
@@ -527,10 +509,7 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
-        assert_eq!(
-            result,
-            Err(BorrowError::VariableNotDefined("z".to_string()))
-        );
+        assert_eq!(result, Err(BorrowError::VariableNotDefined("z".into())));
     }
 
     #[test]
@@ -627,19 +606,19 @@ mod borrow_tests {
         let mut checker = BorrowChecker::new();
         let stmts = vec![
             Statement::VariableDecl {
-                name: "x".to_string(),
+                name: "x".into(),
                 value: None,
                 is_borrowed: false,
             },
             Statement::Scope(vec![Statement::VariableDecl {
-                name: "y".to_string(),
-                value: Some(Expression::Reference("x".to_string())),
+                name: "y".into(),
+                value: Some(Expression::Reference("x".into())),
                 is_borrowed: true,
             }]),
         ];
         assert_eq!(
             checker.check(&stmts),
-            Err(BorrowError::DeclaredWithoutInitialValue("x".to_string())),
+            Err(BorrowError::DeclaredWithoutInitialValue("x".into())),
         );
     }
 

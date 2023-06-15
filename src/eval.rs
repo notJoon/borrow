@@ -50,13 +50,13 @@ impl<'a> Evaluator<'a> {
                     None => 0, // default value is `0`
                 };
 
-                self.insert_global(name.clone(), value);
+                self.insert_global(name.to_owned(), value);
 
                 Ok(None)
             }
             Statement::FunctionDef { name, args, body } => {
                 self.functions
-                    .insert(name.clone(), (args.clone().unwrap(), body));
+                    .insert(name.to_owned(), (args.to_owned().unwrap(), body));
 
                 Ok(None)
             }
@@ -195,12 +195,12 @@ mod eval_test {
         // let y = 10;
         let stmts = vec![
             Statement::VariableDecl {
-                name: "x".to_string(),
+                name: "x".into(),
                 value: Some(Expression::Number(5)),
                 is_borrowed: false,
             },
             Statement::VariableDecl {
-                name: "y".to_string(),
+                name: "y".into(),
                 value: Some(Expression::Number(10)),
                 is_borrowed: false,
             },
@@ -219,14 +219,14 @@ mod eval_test {
 
         let stmts = vec![
             Statement::VariableDecl {
-                name: "x".to_string(),
+                name: "x".into(),
                 value: Some(Expression::Number(5)),
                 is_borrowed: false,
             },
             Statement::VariableDecl {
-                name: "y".to_string(),
+                name: "y".into(),
                 value: Some(Expression::BinaryOp {
-                    lhs: Box::new(Expression::Ident("x".to_string())),
+                    lhs: Box::new(Expression::Ident("x".into())),
                     op: BinaryOp::Plus,
                     rhs: Box::new(Expression::Number(10)),
                 }),

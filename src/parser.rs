@@ -416,7 +416,7 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::VariableDecl {
-                name: "x".to_string(),
+                name: "x".into(),
                 value: Some(Expression::BinaryOp {
                     lhs: Box::new(Expression::BinaryOp {
                         lhs: Box::new(Expression::Number(5)),
@@ -442,7 +442,7 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::VariableDecl {
-                name: "x".to_string(),
+                name: "x".into(),
                 value: Some(Expression::Number(10)),
                 is_borrowed: false,
             }]
@@ -460,7 +460,7 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::FunctionDef {
-                name: "foo".to_string(),
+                name: "foo".into(),
                 args: None,
                 body: vec![],
             }]
@@ -478,8 +478,8 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::FunctionDef {
-                name: "foo".to_string(),
-                args: Some(vec![("x".to_string(), true)]),
+                name: "foo".into(),
+                args: Some(vec![("x".into(), true)]),
                 body: vec![],
             }]
         );
@@ -496,11 +496,11 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::FunctionDef {
-                name: "foo".to_string(),
+                name: "foo".into(),
                 args: Some(vec![
-                    ("x".to_string(), false),
-                    ("y".to_string(), false),
-                    ("z".to_string(), false),
+                    ("x".into(), false),
+                    ("y".into(), false),
+                    ("z".into(), false),
                 ]),
                 body: Vec::new(),
             }]
@@ -518,11 +518,11 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::FunctionDef {
-                name: "foo".to_string(),
+                name: "foo".into(),
                 args: Some(vec![
-                    ("x".to_string(), false),
-                    ("y".to_string(), false),
-                    ("z".to_string(), true),
+                    ("x".into(), false),
+                    ("y".into(), false),
+                    ("z".into(), true),
                 ]),
                 body: Vec::new(),
             }]
@@ -540,10 +540,10 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::FunctionDef {
-                name: "foo".to_string(),
+                name: "foo".into(),
                 args: None,
                 body: vec![Statement::VariableDecl {
-                    name: "x".to_string(),
+                    name: "x".into(),
                     value: Some(Expression::Number(10)),
                     is_borrowed: false,
                 }],
@@ -568,20 +568,20 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::FunctionDef {
-                name: "foo".to_string(),
+                name: "foo".into(),
                 args: Some(vec![
-                    ("x".to_string(), false),
-                    ("y".to_string(), false),
-                    ("z".to_string(), false)
+                    ("x".into(), false),
+                    ("y".into(), false),
+                    ("z".into(), false)
                 ]),
                 body: vec![
                     Statement::VariableDecl {
-                        name: "a".to_string(),
+                        name: "a".into(),
                         value: Some(Expression::Number(10)),
                         is_borrowed: false,
                     },
                     Statement::VariableDecl {
-                        name: "b".to_string(),
+                        name: "b".into(),
                         value: Some(Expression::Number(20)),
                         is_borrowed: false,
                     },
@@ -608,22 +608,22 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::FunctionDef {
-                name: "foo".to_string(),
-                args: Some(vec![("x".to_string(), false),]),
+                name: "foo".into(),
+                args: Some(vec![("x".into(), false),]),
                 body: vec![
                     Statement::VariableDecl {
-                        name: "a".to_string(),
+                        name: "a".into(),
                         value: Some(Expression::Number(10)),
                         is_borrowed: false,
                     },
                     Statement::VariableDecl {
-                        name: "b".to_string(),
-                        value: Some(Expression::Reference("a".to_string())),
+                        name: "b".into(),
+                        value: Some(Expression::Reference("a".into())),
                         is_borrowed: true,
                     },
                     Statement::VariableDecl {
-                        name: "c".to_string(),
-                        value: Some(Expression::Reference("x".to_string())),
+                        name: "c".into(),
+                        value: Some(Expression::Reference("x".into())),
                         is_borrowed: true,
                     },
                 ],
@@ -642,7 +642,7 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::Expr(Expression::FunctionCall {
-                name: Box::new(Expression::Ident("foo".to_string())),
+                name: Box::new(Expression::Ident("foo".into())),
                 args: vec![Expression::Number(5)],
             })]
         );
@@ -659,7 +659,7 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::Expr(Expression::FunctionCall {
-                name: Box::new(Expression::Ident("foo".to_string())),
+                name: Box::new(Expression::Ident("foo".into())),
                 args: vec![
                     Expression::Number(5),
                     Expression::Number(10),
@@ -682,10 +682,10 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::VariableDecl {
-                name: "a".to_string(),
+                name: "a".into(),
                 value: Some(Expression::BinaryOp {
                     lhs: Box::new(Expression::FunctionCall {
-                        name: Box::new(Expression::Ident("foo".to_string())),
+                        name: Box::new(Expression::Ident("foo".into())),
                         args: vec![],
                     }),
                     op: BinaryOp::Plus,
@@ -711,10 +711,10 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::VariableDecl {
-                name: "a".to_string(),
+                name: "a".into(),
                 value: Some(Expression::BinaryOp {
                     lhs: Box::new(Expression::FunctionCall {
-                        name: Box::new(Expression::Ident("foo".to_string())),
+                        name: Box::new(Expression::Ident("foo".into())),
                         args: vec![Expression::Number(5)],
                     }),
                     op: BinaryOp::Plus,
@@ -737,15 +737,15 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::VariableDecl {
-                name: "a".to_string(),
+                name: "a".into(),
                 value: Some(Expression::BinaryOp {
                     lhs: Box::new(Expression::FunctionCall {
-                        name: Box::new(Expression::Ident("foo".to_string())),
+                        name: Box::new(Expression::Ident("foo".into())),
                         args: vec![Expression::Number(3), Expression::Number(4)],
                     }),
                     op: BinaryOp::Plus,
                     rhs: Box::new(Expression::FunctionCall {
-                        name: Box::new(Expression::Ident("bar".to_string())),
+                        name: Box::new(Expression::Ident("bar".into())),
                         args: vec![Expression::Number(5)],
                     }),
                 }),
@@ -773,18 +773,18 @@ mod parser_test {
             stmts,
             vec![
                 Statement::VariableDecl {
-                    name: "x".to_string(),
+                    name: "x".into(),
                     value: Some(Expression::Number(10)),
                     is_borrowed: false,
                 },
                 Statement::Scope(vec![
                     Statement::VariableDecl {
-                        name: "x".to_string(),
+                        name: "x".into(),
                         value: Some(Expression::Number(5)),
                         is_borrowed: false,
                     },
                     Statement::VariableDecl {
-                        name: "y".to_string(),
+                        name: "y".into(),
                         value: Some(Expression::Number(10)),
                         is_borrowed: false,
                     },
@@ -809,18 +809,18 @@ mod parser_test {
             stmts,
             vec![
                 Statement::VariableDecl {
-                    name: "a".to_string(),
+                    name: "a".into(),
                     value: Some(Expression::Number(10)),
                     is_borrowed: false,
                 },
                 Statement::VariableDecl {
-                    name: "b".to_string(),
-                    value: Some(Expression::Reference("a".to_string())),
+                    name: "b".into(),
+                    value: Some(Expression::Reference("a".into())),
                     is_borrowed: true,
                 },
                 Statement::VariableDecl {
-                    name: "c".to_string(),
-                    value: Some(Expression::Reference("b".to_string())),
+                    name: "c".into(),
+                    value: Some(Expression::Reference("b".into())),
                     is_borrowed: true,
                 },
             ]
@@ -848,18 +848,18 @@ mod parser_test {
             stmts,
             vec![
                 Statement::VariableDecl {
-                    name: "a".to_string(),
+                    name: "a".into(),
                     value: Some(Expression::Number(10)),
                     is_borrowed: false,
                 },
                 Statement::Scope(vec![Statement::VariableDecl {
-                    name: "b".to_string(),
-                    value: Some(Expression::Reference("a".to_string())),
+                    name: "b".into(),
+                    value: Some(Expression::Reference("a".into())),
                     is_borrowed: true,
                 }]),
                 Statement::VariableDecl {
-                    name: "c".to_string(),
-                    value: Some(Expression::Reference("a".to_string())),
+                    name: "c".into(),
+                    value: Some(Expression::Reference("a".into())),
                     is_borrowed: true,
                 },
             ]
@@ -877,7 +877,7 @@ mod parser_test {
         assert_eq!(
             stmts,
             vec![Statement::VariableDecl {
-                name: "a".to_string(),
+                name: "a".into(),
                 value: None,
                 is_borrowed: false,
             }]
@@ -894,8 +894,8 @@ mod parser_test {
         assert_eq!(
             parser.parse(),
             vec![Statement::VariableDecl {
-                name: "a".to_string(),
-                value: Some(Expression::Reference("b".to_string())),
+                name: "a".into(),
+                value: Some(Expression::Reference("b".into())),
                 is_borrowed: true,
             }]
         )
@@ -916,13 +916,13 @@ mod parser_test {
             stmts,
             vec![
                 Statement::VariableDecl {
-                    name: "a".to_string(),
+                    name: "a".into(),
                     value: None,
                     is_borrowed: false,
                 },
                 Statement::VariableDecl {
-                    name: "b".to_string(),
-                    value: Some(Expression::Reference("a".to_string())),
+                    name: "b".into(),
+                    value: Some(Expression::Reference("a".into())),
                     is_borrowed: true,
                 },
             ]
@@ -944,14 +944,14 @@ mod parser_test {
             stmts,
             vec![
                 Statement::VariableDecl {
-                    name: "a".to_string(),
+                    name: "a".into(),
                     value: Some(Expression::Number(10)),
                     is_borrowed: false,
                 },
                 Statement::VariableDecl {
-                    name: "b".to_string(),
+                    name: "b".into(),
                     value: Some(Expression::BinaryOp {
-                        lhs: Box::new(Expression::Ident("a".to_string())),
+                        lhs: Box::new(Expression::Ident("a".into())),
                         op: BinaryOp::Plus,
                         rhs: Box::new(Expression::Number(5)),
                     }),
@@ -988,7 +988,7 @@ mod parser_test {
         assert_eq!(
             parser.parse(),
             vec![Statement::FunctionDef {
-                name: "foo".to_string(),
+                name: "foo".into(),
                 args: None,
                 body: vec![Statement::Return(Some(Expression::Number(5)))],
             }]
@@ -1011,23 +1011,23 @@ mod parser_test {
         assert_eq!(
             parser.parse(),
             vec![Statement::FunctionDef {
-                name: "foo".to_string(),
+                name: "foo".into(),
                 args: None,
                 body: vec![
                     Statement::VariableDecl {
-                        name: "a".to_string(),
+                        name: "a".into(),
                         value: Some(Expression::Number(10)),
                         is_borrowed: false,
                     },
                     Statement::VariableDecl {
-                        name: "b".to_string(),
+                        name: "b".into(),
                         value: Some(Expression::Number(20)),
                         is_borrowed: false,
                     },
                     Statement::Return(Some(Expression::BinaryOp {
-                        lhs: Box::new(Expression::Ident("a".to_string())),
+                        lhs: Box::new(Expression::Ident("a".into())),
                         op: BinaryOp::Plus,
-                        rhs: Box::new(Expression::Ident("b".to_string())),
+                        rhs: Box::new(Expression::Ident("b".into())),
                     })),
                 ],
             }]
@@ -1039,10 +1039,10 @@ mod parser_test {
         // let foo = &bar;
         let tokens = vec![
             TokenType::Let,
-            TokenType::Ident("foo".to_string()),
+            TokenType::Ident("foo".into()),
             TokenType::Equals,
             TokenType::Ampersand,
-            TokenType::Ident("bar".to_string()),
+            TokenType::Ident("bar".into()),
             TokenType::Semicolon,
         ];
 
@@ -1071,10 +1071,10 @@ mod parser_test {
     fn parse_function_call_with_reference_argument() {
         // foo(&bar);
         let tokens = vec![
-            TokenType::Ident("foo".to_string()),
+            TokenType::Ident("foo".into()),
             TokenType::OpenParen,
             TokenType::Ampersand,
-            TokenType::Ident("bar".to_string()),
+            TokenType::Ident("bar".into()),
             TokenType::CloseParen,
             TokenType::Semicolon,
         ];
