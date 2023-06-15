@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use crate::{ast::{Statement, Expression}, errors::OwnerGraphError};
+use crate::{
+    ast::{Expression, Statement},
+    errors::OwnerGraphError,
+};
 
 /// A structure representing an ownership graph.
 /// The `collections::BTreeMap` preserves the insertion order of the keys.
@@ -8,7 +11,7 @@ use crate::{ast::{Statement, Expression}, errors::OwnerGraphError};
 struct OwnershipGraph {
     /// The `graph` field represents the relationship
     /// between the owner and the variables that it owns.
-    /// 
+    ///
     /// The `key` is a variable that is borrowing, and the `value`
     /// is a vector of variables that are borrowed by the key.
     graph: BTreeMap<String, Vec<String>>,
@@ -23,18 +26,18 @@ impl OwnershipGraph {
     }
 
     /// `OwnershipGraph::add_owner()` adds a new node(`owner`) to the graph.
-    /// 
+    ///
     /// A node is added when a new variable is declared.
     pub fn add_owner(&mut self, owner: &str, variable: &str) {
         let entry = self.graph.entry(owner.to_string()).or_insert_with(Vec::new);
-        
+
         if !entry.contains(&variable.to_string()) {
             entry.push(variable.to_string());
         }
     }
 
     /// `OwnershipGraph::add_borrower()` adds an edge between nodes in the graph.
-    /// 
+    ///
     /// An edge is added when a variable borrows from another variable.
     pub fn add_borrower(&mut self, owner: &str, borrower: &str) {
         if let Some(borrowers) = self.graph.get_mut(owner) {
@@ -45,7 +48,7 @@ impl OwnershipGraph {
     }
 
     /// `OwnershipGraph::remove_owner()` removes a node(`owner`) from the graph.
-    /// 
+    ///
     /// A node is removed when a variable is out of scope.
     pub fn remove_owner(&mut self, owner: &str, variable: &str) {
         if let Some(owners) = self.graph.get_mut(owner) {
@@ -54,7 +57,7 @@ impl OwnershipGraph {
     }
 
     /// `OwnershipGraph::remove_borrower()` removes an edge between nodes in the graph.
-    /// 
+    ///
     /// An edge is removed when a variable is out of scope.
     pub fn remove_borrower(&mut self, owner: &str, borrower: &str) {
         if let Some(borrowers) = self.graph.get_mut(owner) {
@@ -70,7 +73,7 @@ impl Default for OwnershipGraph {
 }
 
 /// `build_ownership_graph()` builds an ownership graph from a list of statements.
-/// 
+///
 /// It iterates through the list of statements (AST generated from the parser) and processes variable
 /// declarations and borrow expressions.
 fn build_ownership_graph(stmts: &[Statement]) -> Result<OwnershipGraph, OwnerGraphError> {
@@ -80,7 +83,11 @@ fn build_ownership_graph(stmts: &[Statement]) -> Result<OwnershipGraph, OwnerGra
 
     for stmt in stmts {
         match stmt {
-            Statement::VariableDecl { name, is_borrowed, value } => {
+            Statement::VariableDecl {
+                name,
+                is_borrowed,
+                value,
+            } => {
                 if *is_borrowed {
                     if let Some(Expression::Reference(ref_var)) = value {
                         current_owner = ref_var.clone();
@@ -92,12 +99,17 @@ fn build_ownership_graph(stmts: &[Statement]) -> Result<OwnershipGraph, OwnerGra
                 }
                 graph.add_owner(&current_owner, name);
             }
-            Statement::Scope(scope) =>  {
+            Statement::Scope(scope) => {
                 let prev_owner = current_owner.clone();
                 let mut declared_in_scope = vec![];
 
                 for inner_stmt in scope {
-                    if let Statement::VariableDecl { name, value, is_borrowed } = inner_stmt {
+                    if let Statement::VariableDecl {
+                        name,
+                        value,
+                        is_borrowed,
+                    } = inner_stmt
+                    {
                         declared_in_scope.push(name.clone());
 
                         if *is_borrowed {
@@ -178,7 +190,7 @@ mod ownership_graph_tests {
                 value: Some(Expression::Reference("b".into())),
             },
         ];
-        
+
         let graph = build_ownership_graph(&stmts).unwrap();
 
         println!("{:?}", graph);
@@ -232,9 +244,9 @@ mod ownership_graph_tests {
             },
         ];
         let graph = build_ownership_graph(&stmts).unwrap();
-        
+
         println!("{:?}", graph);
-        
+
         assert_eq!(
             graph,
             OwnershipGraph {
@@ -308,7 +320,7 @@ mod ownership_graph_tests {
                 value: Some(Expression::Reference("x".into())),
             }]),
         ];
-        
+
         let graph = build_ownership_graph(&stmts).unwrap();
 
         println!("{:?}", graph);
@@ -351,7 +363,7 @@ mod ownership_graph_tests {
                 value: Some(Expression::Reference("x".into())),
             },
         ];
-        
+
         let graph = build_ownership_graph(&stmts).unwrap();
 
         println!("{:?}", graph);
@@ -426,8 +438,14 @@ mod ownership_graph_tests {
             graph,
             OwnershipGraph {
                 graph: vec![
-                    ("global_var".into(), vec!["x".into(), "y".into(), "z".into()]),
-                    ("x".into(), vec!["a".into(), "d".into(), "g".into(), "h".into()]),
+                    (
+                        "global_var".into(),
+                        vec!["x".into(), "y".into(), "z".into()]
+                    ),
+                    (
+                        "x".into(),
+                        vec!["a".into(), "d".into(), "g".into(), "h".into()]
+                    ),
                     ("y".into(), vec!["b".into(), "e".into()]),
                     ("z".into(), vec!["c".into(), "f".into()]),
                     ("a".into(), vec!["d".into()]),
