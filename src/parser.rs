@@ -171,7 +171,7 @@ impl<'a> Parser<'a> {
 
     /// checks if te argument name already exists in the list of arguments.
     fn is_shadowing(&mut self, args: &[(String, bool)], arg_name: &str) -> bool {
-        args.iter().any(|(name, _)| name == arg_name)
+        args.into_iter().any(|(name, _)| name == arg_name)
     }
 
     /// `function_call` method handles function calls.

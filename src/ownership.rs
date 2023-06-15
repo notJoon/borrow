@@ -139,6 +139,16 @@ fn build_ownership_graph(stmts: &[Statement]) -> Result<OwnershipGraph, OwnerGra
 #[cfg(test)]
 mod ownership_graph_tests {
     use super::*;
+    use crate::{lexer::Lexer, parser::Parser};
+
+    fn setup(input: &str) -> Vec<Statement> {
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().expect("Failed to tokenize");
+
+        let mut parser = Parser::new(&tokens);
+
+        parser.parse()
+    }
 
     #[test]
     fn test_non_violate_borrowing_rule() {
@@ -353,6 +363,79 @@ mod ownership_graph_tests {
                     ("global_var".into(), vec!["x".into()]),
                     // I'm not sure
                     ("x".into(), vec!["y".into(), "z".into()]),
+                ]
+                .into_iter()
+                .collect(),
+            }
+        );
+    }
+
+    #[test]
+    #[ignore = "todo"]
+    fn test_complex_ownership_inference() {
+        let input = r#"
+            function foo(a, b) {
+                let c = a + b;
+                {
+                    let result = 0;
+                    let d = &c;
+                    
+                    result = d + 10;
+
+                    return result;
+                }
+
+                let f = &c;
+            }
+
+            let x = 5;
+            let y = 10;
+            let z = foo(x, y);
+
+            {
+                let a = &x;
+                let b = &y;
+                let c = &z;
+
+                {
+                    function bar(a, b, c) {
+                        let d = &a;
+                        let e = &b;
+                        let f = &c;
+
+                        return d + e + f;
+                    }
+
+                    let d = &a;
+                    let e = &b;
+                    let f = &c;
+                }
+
+                let g = &a;
+            }
+
+            let h = &x;
+        "#;
+
+        let stmts = setup(input);
+        let graph = build_ownership_graph(&stmts).unwrap();
+
+        println!("{:?}", graph);
+
+        assert_eq!(
+            graph,
+            OwnershipGraph {
+                graph: vec![
+                    ("global_var".into(), vec!["x".into(), "y".into(), "z".into()]),
+                    ("x".into(), vec!["a".into(), "d".into(), "g".into(), "h".into()]),
+                    ("y".into(), vec!["b".into(), "e".into()]),
+                    ("z".into(), vec!["c".into(), "f".into()]),
+                    ("a".into(), vec!["d".into()]),
+                    ("b".into(), vec!["e".into()]),
+                    ("c".into(), vec!["f".into()]),
+                    ("d".into(), vec!["g".into()]),
+                    ("e".into(), vec!["g".into()]),
+                    ("f".into(), vec!["g".into()]),
                 ]
                 .into_iter()
                 .collect(),
