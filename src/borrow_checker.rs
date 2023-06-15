@@ -206,22 +206,6 @@ impl<'a> BorrowChecker<'a> {
 
         Ok(())
     }
-    /// `check_scope` checks a scope(block of statement inside `{}`).
-    ///
-    /// It should call `BorrowChecker::check` on each statement inside the scope.
-    // fn check_scope(&mut self, body: &'a [Statement]) -> BorrowResult {
-    //     self.borrows.push(HashMap::new());
-
-    //     let result = self.check(body);
-
-    //     if let Some(scope_borrows) = self.borrows.pop() {
-    //         for borrowed in scope_borrows.keys() {
-    //             self.free(borrowed);
-    //         }
-    //     }
-
-    //     result
-    // }
     /// `check_expression` checks an expression.
     ///
     /// This is where most of the borrow checking logic will be.
@@ -593,5 +577,63 @@ mod borrow_tests {
             checker.check(&stmts),
             Err(BorrowError::DeclaredWithoutInitialValue("x".to_string())),
         );
+    }
+
+    #[test]
+    #[ignore = "todo. we don't need `let` syntax if the variable has been shadowed."]
+    fn test_inference_borrows_function_and_variable_shadowing_case() {
+        let input = r#"
+            function foo(a, b) {
+                let c = a + b;
+                {
+                    let result = 0;
+
+                    let d = &c;
+                    d = d + 10;
+                    
+                    result = d + 10;
+
+                    return result;
+                }
+
+                let f = &c;
+            }
+
+            let x = 5;
+            let y = 10;
+            let z = foo(x, y);
+
+            {
+                let a = &x;
+                let b = &y;
+                let c = &z;
+
+                {
+                    function bar(a, b, c) {
+                        let d = &a;
+                        let e = &b;
+                        let f = &c;
+
+                        return d + e + f;
+                    }
+
+                    let d = &a;
+                    let e = &b;
+                    let f = &c;
+                }
+
+                let g = &a;
+            }
+
+            let h = &x;
+        "#;
+
+        let mut checker = BorrowChecker::new();
+
+        let result = setup(input);
+
+        println!("{:#?}", result);
+
+        // assert_eq!(checker.check(&result), Ok(()));
     }
 }
