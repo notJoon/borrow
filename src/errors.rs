@@ -1,3 +1,9 @@
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum CheckError {
+    Lifetime(LifetimeError),
+    Borrow(BorrowError),
+}
+
 #[derive(PartialEq, Eq, Clone)]
 pub enum LifetimeError {
     VariableNotFound(String),

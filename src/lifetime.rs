@@ -12,6 +12,7 @@ fn next_scope_id() -> usize {
     SCOPE_ID.fetch_add(1, Ordering::SeqCst)
 }
 
+#[derive(Debug)]
 /// A variable in the scope.
 pub struct Variable {
     /// The current borrow state of the variable.
@@ -20,16 +21,6 @@ pub struct Variable {
     scope_id: usize,
     /// Whether the variable is allocated or not.
     is_allocated: bool,
-}
-
-/// `Scope` is a collection of variables.
-pub struct Scope<'a> {
-    /// The scope `id` of the scope.
-    id: usize,
-    /// The variables in the scope.
-    variables: BTreeMap<&'a str, Variable>,
-    /// The parent scope. `None` if the scope is the root scope.
-    parent: Option<&'a Scope<'a>>,
 }
 
 impl Variable {
@@ -47,22 +38,33 @@ impl Variable {
     }
 
     /// Returns the current borrow state of the variable.
-    pub fn get_state(&self) -> &BorrowState {
+    fn get_state(&self) -> &BorrowState {
         &self.state
     }
 
     /// Sets the state of the variable.
     ///
     /// The `is_allocated` field is updated based on the new `state`.
-    pub fn set_state(&mut self, state: BorrowState) {
+    fn set_state(&mut self, state: BorrowState) {
         self.is_allocated = state != BorrowState::Uninitialized;
         self.state = state;
     }
 
     /// Returns the current memory allocation status of the variable.
-    pub fn is_allocated(&self) -> bool {
+    fn is_allocated(&self) -> bool {
         self.is_allocated
     }
+}
+
+#[derive(Debug)]
+/// `Scope` is a collection of variables.
+pub struct Scope<'a> {
+    /// The scope `id` of the scope.
+    pub id: usize,
+    /// The variables in the scope.
+    pub variables: BTreeMap<&'a str, Variable>,
+    /// The parent scope. `None` if the scope is the root scope.
+    pub parent: Option<&'a Scope<'a>>,
 }
 
 impl<'a> Scope<'a> {
@@ -78,7 +80,7 @@ impl<'a> Scope<'a> {
     }
 
     /// Check if the scope or any of its parent scopes contains a variable.
-    pub fn contains_val(&self, var: &'a str) -> bool {
+    fn contains_val(&self, var: &'a str) -> bool {
         // Check if the current scope contains the variable.
         if self.variables.contains_key(var) {
             return true;
@@ -95,19 +97,19 @@ impl<'a> Scope<'a> {
     /// Insert a variable\ with the given `state` into the scope.
     ///
     /// The variable is allocated memory if its state is not `Uninitialized`.
-    pub fn insert(&mut self, var: &'a str, state: BorrowState) {
+    fn insert(&mut self, var: &'a str, state: BorrowState) {
         self.variables.insert(var, Variable::new(state, self.id));
     }
 
     /// Returns the state of a variable in the scope or any of its parent scopes.
-    pub fn get_state(&self, var: &'a str) -> Option<&BorrowState> {
+    fn get_state(&self, var: &'a str) -> Option<&BorrowState> {
         self.variables.get(var).map(|v| v.get_state())
     }
 
     /// Sets the state of a variable in the scope.
     ///
     /// The variable's memory allocation is updated based on the new state.
-    pub fn set_state(&mut self, var: &'a str, state: BorrowState) {
+    fn set_state(&mut self, var: &'a str, state: BorrowState) {
         if let Some(variable) = self.variables.get_mut(var) {
             variable.is_allocated = state != BorrowState::Uninitialized;
             variable.set_state(state);
@@ -115,7 +117,7 @@ impl<'a> Scope<'a> {
     }
 
     /// Returns whether a variable in the scope or any of its parent scopes is allocated.
-    pub fn is_allocated(&self, var: &'a str) -> Option<bool> {
+    fn is_allocated(&self, var: &'a str) -> Option<bool> {
         self.variables.get(var).map(|v| v.is_allocated())
     }
 
@@ -159,7 +161,7 @@ impl<'a> Scope<'a> {
     /// Returns a reference to a variable in the scope or any of its parent scopes.
     ///
     /// If the variable is not found, an error is returned.
-    fn get_variable(&self, var: &'a str) -> Result<&Variable, LifetimeError> {
+    pub fn get_variable(&self, var: &'a str) -> Result<&Variable, LifetimeError> {
         if let Some(variable) = self.variables.get(var) {
             return Ok(variable);
         }
