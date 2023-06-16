@@ -99,6 +99,9 @@ impl<'a> BorrowChecker<'a> {
                                 ident.into(),
                             )))
                         }
+                        // [NOTE] 2023-06-16
+                        // Allow to declare a variable without initial value.
+                        // but it must panic when the reference is not initialized.
                         BorrowState::Uninitialized => {
                             return Err(CheckError::Borrow(
                                 BorrowError::DeclaredWithoutInitialValue(
@@ -163,12 +166,7 @@ impl<'a> BorrowChecker<'a> {
 
         Ok(())
     }
-    /// `check_function_def` checks a function definition.
-    ///
-    /// It should validate that the function params aren't violating
-    /// any borrow rules.
-    /// It should also call `BorrowChecker::check` on the function body,
-    /// to ensure that function body is also valid.
+
     fn check_function_def(
         &mut self,
         _name: &'a str,
@@ -198,7 +196,6 @@ impl<'a> BorrowChecker<'a> {
         // check body of function
         let result = match self.check(body) {
             Ok(_) => Ok(()),
-            // TODO should be add more specific error handling
             Err(err) => panic!("Error: {:?}", err)
         };
 
@@ -651,15 +648,15 @@ mod borrow_tests {
         let mut checker = BorrowChecker::new();
 
         let input = r#"
-            function foo(a) {
-                let b = &a;
-            }
+        function foo(a) {
+            let b = &a;
 
-            let x = 5;
-            foo(&x);
+            return b;
+        }
         "#;
 
         let result = setup(input);
+        println!("{:#?}", result);
         let result = checker.check(&result);
 
         assert_eq!(result, Ok(()));
@@ -676,16 +673,12 @@ mod borrow_tests {
 
             function bar(a) {
                 let b = &a;
-                let d = foo(&b);
-
-                return d;
+                let c = foo(&b);
             }
 
             function baz(a, b) {
                 let c = foo(&a);
                 let d = bar(&b);
-
-                return c + d;
             }
 
             let x = 5;
@@ -697,6 +690,7 @@ mod borrow_tests {
         "#;
 
         let result = setup(input);
+        println!("{:#?}", result);
         let result = checker.check(&result);
 
         assert_eq!(result, Ok(()));
@@ -710,6 +704,7 @@ mod borrow_tests {
                 {
                     let result = 0;
 
+                    let d;
                     let d = &c;
                     let d = d + 10;
                     
@@ -751,11 +746,30 @@ mod borrow_tests {
         "#;
 
         let mut checker = BorrowChecker::new();
-
         let result = setup(input);
 
-        // println!("{:#?}", result);
-
         assert_eq!(checker.check(&result), Ok(()));
+    }
+}
+
+#[cfg(test)]
+mod lifetime_tests {
+    use crate::{lexer::Lexer, parser::Parser};
+
+    use super::*;
+
+    fn setup(input: &str) -> Vec<Statement> {
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().expect("Failed to tokenize");
+
+        let mut parser = Parser::new(&tokens);
+
+        parser.parse()
+    }
+
+    #[test]
+    #[should_panic = "short lifetime"]
+    fn test_short_lifetime() {
+        unimplemented!("short lifetime");
     }
 }
