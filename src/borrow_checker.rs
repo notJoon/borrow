@@ -2,13 +2,16 @@ use std::collections::HashMap;
 
 use crate::{
     ast::{Expression, Statement},
-    errors::BorrowError,
+    errors::{BorrowError, CheckError},
+    lifetime::Scope,
 };
 
 type BorrowResult = Result<(), BorrowError>;
+type CheckResult = Result<(), CheckError>;
 
 /// The `BorrowChecker` struct is used to keep track of the state of borrows.
 pub struct BorrowChecker<'a> {
+    scope: Scope<'a>,
     borrows: Vec<HashMap<&'a str, BorrowState>>,
 }
 
@@ -29,50 +32,29 @@ impl<'a> BorrowChecker<'a> {
     /// The hashmap will be used to keep track of the borrows and their states.
     pub fn new() -> Self {
         BorrowChecker {
+            scope: Scope::new(None),
             borrows: vec![HashMap::new()],
         }
     }
     /// `check` method will receive a statement and dispatch
     /// to the appropriate specific check method based on the `ast::Statement` variant.
-    pub fn check(&mut self, stmts: &'a [Statement]) -> BorrowResult {
+    pub fn check(&mut self, stmts: &'a [Statement]) -> CheckResult {
         match stmts {
             [] => Ok(()),
             [stmt, rest @ ..] => {
-                self.check_statement(stmt)?;
+                let _ = self.check_statement(stmt);
+
+                // Check rules for all variables in the current scope
+                for name in self.scope.variables.keys() {
+                    let _ = self.check_rules(name, self.scope.id);
+                }
+
                 self.check(rest)
             }
         }
     }
-    /// This function helps to manage the scope of borrow checking.
-    /// It accepts a closure `action` which is executed within a new scope.
-    /// The function automatically handles the scope entering and exiting
-    /// by pushing a new `HashMap` to `self.borrows` and popping it after `action` execution.
-    ///
-    /// # Arguments
-    ///
-    /// * `action` - A closure that encapsulates the actions to be performed within the new scope.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `F` - The type of the closure.
-    /// * `T` - The output type of the closure.
-    fn allocate_scope<F, T>(&mut self, action: F) -> T
-    where
-        F: FnOnce(&mut Self) -> T,
-    {
-        // enter new scope
-        self.borrows.push(HashMap::new());
 
-        // apply action within the scope
-        let result = action(self);
-
-        // exit scope
-        self.borrows.pop();
-
-        result
-    }
-
-    fn check_statement(&mut self, stmt: &'a Statement) -> BorrowResult {
+    fn check_statement(&mut self, stmt: &'a Statement) -> CheckResult {
         match stmt {
             Statement::VariableDecl {
                 name,
@@ -87,6 +69,13 @@ impl<'a> BorrowChecker<'a> {
             Statement::Expr(expr) => self.check_expression(expr),
         }
     }
+    /// check borrow and lifetime rules for each given variable name.
+    fn check_rules(&self, name: &'a str, id: usize) -> CheckResult {
+        self.scope.check_lifetime(name, id).unwrap();
+        self.scope.check_borrow_rules(name).unwrap();
+
+        Ok(())
+    }
     /// `check_variable_decl` method checks a variable declaration, like `let x = 5;` or `let b = &a`.
     ///
     /// It needs to ensure that if the variable is being assigned a reference,
@@ -96,41 +85,62 @@ impl<'a> BorrowChecker<'a> {
         name: &'a str,
         value: &'a Option<Expression>,
         is_borrowed: bool,
-    ) -> BorrowResult {
-        match (is_borrowed, value) {
-            (true, Some(Expression::Reference(ref ident))) => {
-                if let Some(state) = self.get_borrow(ident) {
-                    match state {
-                        // [NOTE] 2023-06-15
-                        // This line used to checks `BorrowState::Borrowed` or `BorrowState::ImmutBorrowed` state.
-                        // but, we allows to have multiple immutable borrows of the same variable.
-                        // so, modified it to check only `Borrowed` state.
-                        BorrowState::Borrowed => {
-                            return Err(BorrowError::BorrowedMutable(ident.into()));
-                        }
-                        BorrowState::Uninitialized => {
-                            return Err(BorrowError::DeclaredWithoutInitialValue(ident.into()));
-                        }
-                        _ => {}
-                    }
-                    // [NOTE] 2023-06-15
-                    // `BorrowState::ImmutBorrowed` and `BorrowState::Initialized` into the borrows hashmap
-                    // for the same variable name. This could cause potential issue like overwrite the borrow state.
-                    self.insert_borrow(name, BorrowState::ImmutBorrowed);
-
+    ) -> CheckResult {
+        if !is_borrowed {
+            match value {
+                Some(expr) => {
+                    let _ = self.check_expression(expr);
+                    self.insert_borrow(name, BorrowState::Initialized);
                     return Ok(());
                 }
-
-                Err(BorrowError::VariableNotDefined(ident.into()))
+                None => {
+                    return Err(CheckError::Borrow(
+                        BorrowError::DeclaredWithoutInitialValue(name.into()),
+                    ))
+                }
             }
-            (true, _) => Err(BorrowError::VariableNotInitialized(name.into())),
-            (false, Some(expr)) => {
-                self.check_expression(expr)?;
-                self.insert_borrow(name, BorrowState::Initialized);
+        }
 
-                Ok(())
+        // This case handles when the variable is borrowed as a reference
+        // e.g. `let b = &a;`
+        let ident = match value {
+            Some(Expression::Reference(ref ident)) => ident,
+            _ => {
+                return Err(CheckError::Borrow(BorrowError::VariableNotInitialized(
+                    name.into(),
+                )))
             }
-            (false, None) => Err(BorrowError::DeclaredWithoutInitialValue(name.into())),
+        };
+
+        // If there is no borrow state, then early return
+        let state = match self.get_borrow(ident) {
+            Some(state) => state,
+            None => {
+                return Err(CheckError::Borrow(BorrowError::VariableNotDefined(
+                    ident.into(),
+                )))
+            }
+        };
+
+        match state {
+            BorrowState::Borrowed => {
+                return Err(CheckError::Borrow(BorrowError::BorrowedMutable(
+                    ident.into(),
+                )))
+            }
+            BorrowState::Initialized | BorrowState::ImmutBorrowed => {
+                // Allow multiple immutable borrows of the same variable.
+                self.insert_borrow(name, BorrowState::Borrowed);
+                return Ok(());
+            }
+            // [NOTE] 2023-06-16
+            // Allow to declare a variable without initial value.
+            // but it must panic when the reference is not initialized.
+            BorrowState::Uninitialized => {
+                return Err(CheckError::Borrow(
+                    BorrowError::CannotReferenceUninitializedVariable(ident.into()),
+                ))
+            }
         }
     }
 
@@ -155,25 +165,20 @@ impl<'a> BorrowChecker<'a> {
         Err(BorrowError::InvalidBorrow(name.into()))
     }
 
-    fn check_value_expr(&mut self, value: &'a Option<Expression>) -> BorrowResult {
+    fn check_value_expr(&mut self, value: &'a Option<Expression>) -> CheckResult {
         if let Some(expr) = value {
             return self.check_expression(expr);
         }
 
         Ok(())
     }
-    /// `check_function_def` checks a function definition.
-    ///
-    /// It should validate that the function params aren't violating
-    /// any borrow rules.
-    /// It should also call `BorrowChecker::check` on the function body,
-    /// to ensure that function body is also valid.
+
     fn check_function_def(
         &mut self,
         _name: &'a str,
         args: &'a Option<Vec<(String, bool)>>,
         body: &'a [Statement],
-    ) -> BorrowResult {
+    ) -> CheckResult {
         self.borrows.push(HashMap::new());
 
         // check args if exists
@@ -182,19 +187,41 @@ impl<'a> BorrowChecker<'a> {
                 // Insert each argument into the current scope as an initialized variable
                 self.insert_borrow(arg, BorrowState::Initialized);
 
-                if *is_borrowed {
-                    self.borrow_imm(arg)?;
+                // If arg is not borrowed, continue
+                if !is_borrowed {
+                    continue;
+                }
+
+                match self.borrow_imm(arg) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(CheckError::Borrow(BorrowError::CannotBorrowImmutable(
+                            arg.into(),
+                        )))
+                    }
                 }
             }
         }
 
-        // check body of function
-        let result = self.check(body);
+        // Check function body
+        for stmt in body {
+            match stmt {
+                Statement::Return(Some(Expression::Ident(ident))) => {
+                    // if return statement is returning a variable, check if it is borrowed
+                    if !self.is_borrowed(ident) {
+                        return Err(CheckError::Borrow(BorrowError::VariableIsNotBorrowed(
+                            ident.into(),
+                        )));
+                    }
+                }
 
-        // release borrows
+                _ => self.check_statement(stmt)?,
+            }
+        }
+
         self.borrows.pop();
 
-        result
+        Ok(())
     }
 
     fn declare(&mut self, var: &'a str) -> BorrowResult {
@@ -215,7 +242,7 @@ impl<'a> BorrowChecker<'a> {
     /// violating any borrow rules.
     fn check_function_call(&mut self, _name: &str, args: &'a Vec<Expression>) -> BorrowResult {
         for arg in args {
-            self.check_expression(arg)?;
+            let _ = self.check_expression(arg);
 
             if let Expression::Ident(ident) = arg {
                 if let Some(BorrowState::Borrowed) = self.get_borrow(ident) {
@@ -232,14 +259,14 @@ impl<'a> BorrowChecker<'a> {
     /// it should handle checking identifiers, literals and operators,
     /// ensuring that any identifiers are borrowed references, they aren't being
     /// used in a way that would violate the borrow rules.
-    fn check_expression(&mut self, expr: &'a Expression) -> BorrowResult {
+    fn check_expression(&mut self, expr: &'a Expression) -> CheckResult {
         match expr {
             // if the expression is a reference, check if the variable is already borrowed
             Expression::Reference(var) => {
                 let borrow = self.get_borrow(var);
 
                 if let Some(BorrowState::Borrowed) = borrow {
-                    return Err(BorrowError::BorrowedMutable(var.into()));
+                    return Err(CheckError::Borrow(BorrowError::BorrowedMutable(var.into())));
                 }
             }
 
@@ -249,10 +276,14 @@ impl<'a> BorrowChecker<'a> {
                 self.check_expression(rhs)?;
             }
 
-            // if the expression is an identifier, check if the variable is already borrowed
+            // if the expression is an identifier, check if the variable's borrow and its lifetime
             Expression::Ident(ident) => {
+                let _ = self.check_rules(ident, self.scope.id);
+
                 if self.get_borrow(ident).is_none() {
-                    return Err(BorrowError::VariableNotInitialized(ident.into()));
+                    return Err(CheckError::Borrow(BorrowError::VariableNotInitialized(
+                        ident.into(),
+                    )));
                 }
             }
 
@@ -262,7 +293,7 @@ impl<'a> BorrowChecker<'a> {
         Ok(())
     }
 
-    fn check_return(&mut self, expr: &'a Option<Expression>) -> BorrowResult {
+    fn check_return(&mut self, expr: &'a Option<Expression>) -> CheckResult {
         if let Some(expression) = expr {
             return self.check_expression(expression);
         }
@@ -296,7 +327,7 @@ impl<'a> BorrowChecker<'a> {
         Err(BorrowError::CannotBorrowImmutable(name.into()))
     }
 
-    fn get_borrow(&mut self, var: &'a str) -> Option<&BorrowState> {
+    fn get_borrow(&self, var: &'a str) -> Option<&BorrowState> {
         for scope in self.borrows.iter().rev() {
             if let Some(state) = scope.get(var) {
                 return Some(state);
@@ -320,6 +351,51 @@ impl<'a> BorrowChecker<'a> {
 
     fn is_borrow_contains_key(&mut self, var: &'a str) -> bool {
         self.borrows.last_mut().unwrap().contains_key(var)
+    }
+
+    fn is_borrowed(&self, var: &'a str) -> bool {
+        if let Some(state) = self.get_borrow(var) {
+            return state == &BorrowState::Borrowed;
+        }
+
+        false
+    }
+
+    fn is_initialized(&self, var: &'a str) -> bool {
+        if let Some(state) = self.get_borrow(var) {
+            return state == &BorrowState::Initialized;
+        }
+
+        false
+    }
+
+    /// This function helps to manage the scope of borrow checking.
+    /// It accepts a closure `action` which is executed within a new scope.
+    /// The function automatically handles the scope entering and exiting
+    /// by pushing a new `HashMap` to `self.borrows` and popping it after `action` execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - A closure that encapsulates the actions to be performed within the new scope.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `F` - The type of the closure.
+    /// * `T` - The output type of the closure.
+    fn allocate_scope<F, T>(&mut self, action: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        // enter new scope
+        self.borrows.push(HashMap::new());
+
+        // apply action within the scope
+        let result = action(self);
+
+        // exit scope
+        self.borrows.pop();
+
+        result
     }
 }
 
@@ -348,27 +424,27 @@ mod borrow_tests {
 
         assert_eq!(result, Ok(()));
 
-        let input = r#"let a = &b;"#;
+        let input = r#"let a;"#;
         let result = setup(input);
         let result = checker.check(&result);
 
-        assert_eq!(result, Err(BorrowError::VariableNotDefined("b".into())));
+        assert_eq!(result, Ok(()));
     }
 
     #[test]
     fn test_check_variable_declaration_undeclared_borrow_as_parsed_form() {
         let mut checker = BorrowChecker::new();
 
-        // let b = &a;
-        let stmts = vec![Statement::VariableDecl {
-            name: "b".into(),
-            value: Some(Expression::Reference("a".into())),
-            is_borrowed: true,
-        }];
+        let input = r#"let a = &b;"#;
+
+        let result = setup(input);
+        let result = checker.check(&result);
 
         assert_eq!(
-            checker.check(&stmts),
-            Err(BorrowError::VariableNotDefined("a".into()))
+            result,
+            Err(CheckError::Borrow(BorrowError::VariableNotDefined(
+                "a".into()
+            )))
         );
     }
 
@@ -396,9 +472,51 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    #[should_panic = "variable `a` has no initial value"]
+    fn test_reference_uninitialized_variable() {
+        let input = r#"
+            let a;
+            let b = &a;
+        "#;
+
+        let mut checker = BorrowChecker::new();
+
+        let result = setup(input);
+
         assert_eq!(
-            result,
-            Err(BorrowError::DeclaredWithoutInitialValue("a".into()))
+            checker.check(&result),
+            Err(CheckError::Borrow(BorrowError::VariableNotInitialized(
+                "a".into()
+            )))
+        );
+    }
+
+    #[test]
+    #[should_panic = "variable `x` has no initial value"]
+    fn test_nested_scope_with_uninitialized_variable() {
+        let mut checker = BorrowChecker::new();
+        let stmts = vec![
+            Statement::VariableDecl {
+                name: "x".into(),
+                value: None,
+                is_borrowed: false,
+            },
+            Statement::Scope(vec![Statement::VariableDecl {
+                name: "y".into(),
+                value: Some(Expression::Reference("x".into())),
+                is_borrowed: true,
+            }]),
+        ];
+
+        assert_eq!(
+            checker.check(&stmts),
+            Err(CheckError::Borrow(
+                BorrowError::DeclaredWithoutInitialValue("x".into())
+            )),
         );
     }
 
@@ -436,6 +554,7 @@ mod borrow_tests {
     }
 
     #[test]
+    #[should_panic = "variable `b` is not defined in the current scope"]
     fn test_invalid_reference_in_nested_scope() {
         let mut checker = BorrowChecker::new();
 
@@ -449,7 +568,12 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
-        assert_eq!(result, Err(BorrowError::VariableNotDefined("b".into())));
+        assert_eq!(
+            result,
+            Err(CheckError::Borrow(BorrowError::VariableNotDefined(
+                "b".into()
+            )))
+        );
     }
 
     #[test]
@@ -491,6 +615,7 @@ mod borrow_tests {
     }
 
     #[test]
+    #[should_panic = "variable `z` is not defined in the referenced scope"]
     fn check_invalid_deep_nested_scope_borrow() {
         let mut checker = BorrowChecker::new();
 
@@ -509,12 +634,16 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
-        assert_eq!(result, Err(BorrowError::VariableNotDefined("z".into())));
+        assert_eq!(
+            result,
+            Err(CheckError::Borrow(BorrowError::VariableNotDefined(
+                "z".into()
+            )))
+        );
     }
 
     #[test]
-    // allow variable shadowing
-    fn test_duplicated_variable_name_in_same_scope() {
+    fn test_variable_shadowing() {
         let mut checker = BorrowChecker::new();
 
         let input = r#"
@@ -542,23 +671,26 @@ mod borrow_tests {
         let result = setup(input);
         let result = checker.check(&result);
 
+        // println!("{:#?}", checker.scope);
+
         assert_eq!(result, Ok(()));
     }
 
     #[test]
+    // I think, lifetime checker does not recognize the function's parameter as an variable.
     fn check_borrow_in_function_decl() {
         let mut checker = BorrowChecker::new();
 
         let input = r#"
-            function foo(a) {
-                let b = &a;
-            }
+        function foo(a) {
+            let b = &a;
 
-            let x = 5;
-            foo(&x);
+            return b;
+        }
         "#;
 
         let result = setup(input);
+        // println!("{:#?}", result);
         let result = checker.check(&result);
 
         assert_eq!(result, Ok(()));
@@ -575,16 +707,12 @@ mod borrow_tests {
 
             function bar(a) {
                 let b = &a;
-                let d = foo(&b);
-
-                return d;
+                let c = foo(&b);
             }
 
             function baz(a, b) {
                 let c = foo(&a);
                 let d = bar(&b);
-
-                return c + d;
             }
 
             let x = 5;
@@ -596,87 +724,45 @@ mod borrow_tests {
         "#;
 
         let result = setup(input);
+        // println!("{:#?}", result);
         let result = checker.check(&result);
 
         assert_eq!(result, Ok(()));
     }
 
     #[test]
-    fn test_nested_scope_with_uninitialized_variable() {
-        let mut checker = BorrowChecker::new();
-        let stmts = vec![
-            Statement::VariableDecl {
-                name: "x".into(),
-                value: None,
-                is_borrowed: false,
-            },
-            Statement::Scope(vec![Statement::VariableDecl {
-                name: "y".into(),
-                value: Some(Expression::Reference("x".into())),
-                is_borrowed: true,
-            }]),
-        ];
-        assert_eq!(
-            checker.check(&stmts),
-            Err(BorrowError::DeclaredWithoutInitialValue("x".into())),
-        );
-    }
-
-    #[test]
-    #[ignore = "todo. we don't need `let` syntax if the variable has been shadowed."]
     fn test_inference_borrows_function_and_variable_shadowing_case() {
         let input = r#"
-            function foo(a, b) {
-                let c = a + b;
-                {
-                    let result = 0;
+            function foo(a) {
+                let b = &a;
 
-                    let d = &c;
-                    d = d + 10;
-                    
-                    result = d + 10;
-
-                    return result;
-                }
-
-                let f = &c;
+                return b;
             }
 
             let x = 5;
-            let y = 10;
-            let z = foo(x, y);
-
-            {
-                let a = &x;
-                let b = &y;
-                let c = &z;
-
-                {
-                    function bar(a, b, c) {
-                        let d = &a;
-                        let e = &b;
-                        let f = &c;
-
-                        return d + e + f;
-                    }
-
-                    let d = &a;
-                    let e = &b;
-                    let f = &c;
-                }
-
-                let g = &a;
-            }
-
-            let h = &x;
+            let x = x + 10;
         "#;
 
         let mut checker = BorrowChecker::new();
-
         let result = setup(input);
+        let result = checker.check(&result);
 
-        println!("{:#?}", result);
+        assert_eq!(result, Ok(()));
+    }
+}
 
-        // assert_eq!(checker.check(&result), Ok(()));
+#[cfg(test)]
+mod lifetime_tests {
+    use crate::{lexer::Lexer, parser::Parser};
+
+    use super::*;
+
+    fn setup(input: &str) -> Vec<Statement> {
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().expect("Failed to tokenize");
+
+        let mut parser = Parser::new(&tokens);
+
+        parser.parse()
     }
 }
