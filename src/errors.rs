@@ -62,11 +62,13 @@ pub enum BorrowError {
     VariableNotInitialized(String),
     VariableDeclaredDuplicate(String),
     VariableNotInScope(String),
+    VariableIsNotBorrowed(String),
     InvalidBorrowMutablyBorrowed(String),
     InvalidBorrow(String),
     NoScopeAvailable(String),
     CannotBorrowMutable(String),
     CannotBorrowImmutable(String),
+    CannotReferenceUninitializedVariable(String),
 }
 
 impl std::fmt::Display for BorrowError {
@@ -95,6 +97,9 @@ impl std::fmt::Display for BorrowError {
             BorrowError::VariableNotInScope(var) => {
                 write!(f, "Variable {var} is not in scope")
             }
+            BorrowError::VariableIsNotBorrowed(var) => {
+                write!(f, "Variable {var} is not borrowed")
+            }
             BorrowError::InvalidBorrowMutablyBorrowed(var) => write!(
                 f,
                 "Cannot borrow {var}. It is currently being mutably borrowed"
@@ -106,6 +111,9 @@ impl std::fmt::Display for BorrowError {
             BorrowError::CannotBorrowMutable(var) => write!(f, "Cannot borrow {var} as mutable"),
             BorrowError::CannotBorrowImmutable(var) => {
                 write!(f, "Cannot borrow {var} as immutable")
+            }
+            BorrowError::CannotReferenceUninitializedVariable(var) => {
+                write!(f, "Cannot reference uninitialized variable {var}")
             }
         }
     }
@@ -125,6 +133,7 @@ impl std::fmt::Debug for BorrowError {
                 write!(f, "VariableDeclaredDuplicate: {var}")
             }
             BorrowError::VariableNotInScope(var) => write!(f, "VariableNotInScope: {var}"),
+            BorrowError::VariableIsNotBorrowed(var) => write!(f, "VariableIsNotBorrowed: {var}"),
             BorrowError::InvalidBorrowMutablyBorrowed(var) => {
                 write!(f, "InvalidBorrowMutablyBorrowed: {var}")
             }
@@ -132,6 +141,9 @@ impl std::fmt::Debug for BorrowError {
             BorrowError::NoScopeAvailable(var) => write!(f, "NoScopeAvailable: {var}"),
             BorrowError::CannotBorrowMutable(var) => write!(f, "CannotBorrowMutable: {var}"),
             BorrowError::CannotBorrowImmutable(var) => write!(f, "CannotBorrowImmutable: {var}"),
+            BorrowError::CannotReferenceUninitializedVariable(var) => {
+                write!(f, "CannotReferenceUninitializedVariable: {var}")
+            }
         }
     }
 }
