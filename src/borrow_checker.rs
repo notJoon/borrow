@@ -46,7 +46,7 @@ impl<'a> BorrowChecker<'a> {
 
                 // Check rules for all variables in the current scope
                 for name in self.scope.variables.keys() {
-                    self.check_rules(name, self.scope.id);
+                    let _ = self.check_rules(name, self.scope.id);
                 }
 
                 self.check(rest)
@@ -86,51 +86,61 @@ impl<'a> BorrowChecker<'a> {
         value: &'a Option<Expression>,
         is_borrowed: bool,
     ) -> CheckResult {
-        match (is_borrowed, value) {
-            (true, Some(Expression::Reference(ref ident))) => {
-                if let Some(state) = self.get_borrow(ident) {
-                    match state {
-                        // [NOTE] 2023-06-15
-                        // This line used to checks `BorrowState::Borrowed` or `BorrowState::ImmutBorrowed` state.
-                        // but, we allows to have multiple immutable borrows of the same variable.
-                        // so, modified it to check only `Borrowed` state.
-                        BorrowState::Borrowed => {
-                            return Err(CheckError::Borrow(BorrowError::BorrowedMutable(
-                                ident.into(),
-                            )))
-                        }
-                        BorrowState::Initialized | BorrowState::ImmutBorrowed => {
-                            // Allow multiple immutable borrows of the same variable.
-                            self.insert_borrow(name, BorrowState::Borrowed);
-                            return Ok(());
-                        }
-                        // [NOTE] 2023-06-16
-                        // Allow to declare a variable without initial value.
-                        // but it must panic when the reference is not initialized.
-                        BorrowState::Uninitialized => {
-                            return Err(CheckError::Borrow(
-                                BorrowError::CannotReferenceUninitializedVariable(ident.into()),
-                            ))
-                        }
-                    }
+        if !is_borrowed {
+            match value {
+                Some(expr) => {
+                    let _ = self.check_expression(expr);
+                    self.insert_borrow(name, BorrowState::Initialized);
+                    return Ok(());
                 }
+                None => {
+                    return Err(CheckError::Borrow(
+                        BorrowError::DeclaredWithoutInitialValue(name.into()),
+                    ))
+                }
+            }
+        }
 
+        // This case handles when the variable is borrowed as a reference
+        // e.g. `let b = &a;`
+        let ident = match value {
+            Some(Expression::Reference(ref ident)) => ident,
+            _ => {
+                return Err(CheckError::Borrow(BorrowError::VariableNotInitialized(
+                    name.into(),
+                )))
+            }
+        };
+
+        // If there is no borrow state, then early return
+        let state = match self.get_borrow(ident) {
+            Some(state) => state,
+            None => {
                 return Err(CheckError::Borrow(BorrowError::VariableNotDefined(
                     ident.into(),
-                )));
+                )))
             }
-            (true, _) => Err(CheckError::Borrow(BorrowError::VariableNotInitialized(
-                name.into(),
-            ))),
-            (false, Some(expr)) => {
-                let _ = self.check_expression(expr);
-                self.insert_borrow(name, BorrowState::Initialized);
+        };
 
-                Ok(())
+        match state {
+            BorrowState::Borrowed => {
+                return Err(CheckError::Borrow(BorrowError::BorrowedMutable(
+                    ident.into(),
+                )))
             }
-            (false, None) => Err(CheckError::Borrow(
-                BorrowError::DeclaredWithoutInitialValue(name.into()),
-            )),
+            BorrowState::Initialized | BorrowState::ImmutBorrowed => {
+                // Allow multiple immutable borrows of the same variable.
+                self.insert_borrow(name, BorrowState::Borrowed);
+                return Ok(());
+            }
+            // [NOTE] 2023-06-16
+            // Allow to declare a variable without initial value.
+            // but it must panic when the reference is not initialized.
+            BorrowState::Uninitialized => {
+                return Err(CheckError::Borrow(
+                    BorrowError::CannotReferenceUninitializedVariable(ident.into()),
+                ))
+            }
         }
     }
 
@@ -177,14 +187,17 @@ impl<'a> BorrowChecker<'a> {
                 // Insert each argument into the current scope as an initialized variable
                 self.insert_borrow(arg, BorrowState::Initialized);
 
-                if *is_borrowed {
-                    match self.borrow_imm(arg) {
-                        Ok(_) => {}
-                        Err(_) => {
-                            return Err(CheckError::Borrow(BorrowError::CannotBorrowImmutable(
-                                arg.into(),
-                            )))
-                        }
+                // If arg is not borrowed, continue
+                if !is_borrowed {
+                    continue;
+                }
+
+                match self.borrow_imm(arg) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(CheckError::Borrow(BorrowError::CannotBorrowImmutable(
+                            arg.into(),
+                        )))
                     }
                 }
             }
@@ -265,7 +278,7 @@ impl<'a> BorrowChecker<'a> {
 
             // if the expression is an identifier, check if the variable's borrow and its lifetime
             Expression::Ident(ident) => {
-                self.check_rules(ident, self.scope.id);
+                let _ = self.check_rules(ident, self.scope.id);
 
                 if self.get_borrow(ident).is_none() {
                     return Err(CheckError::Borrow(BorrowError::VariableNotInitialized(
