@@ -60,6 +60,11 @@ impl<'a> Evaluator<'a> {
 
                 Ok(None)
             }
+            Statement::FunctionCall { name, args } => {
+                self.evaluate_function_call(name, args)?;
+
+                Ok(None)
+            }
             // For scope statements, create a new local environment, evaluate all statements
             // within the scope, then discard the local environment.
             Statement::Scope(stmts) => {

@@ -11,6 +11,10 @@ pub enum Statement {
         args: Option<Vec<(String, bool)>>,
         body: Vec<Statement>,
     },
+    FunctionCall {
+        name: String,
+        args: Vec<Expression>,
+    },
     /// Represents a variable declaration.
     ///
     /// Contains the name of the variable, an optional value,
